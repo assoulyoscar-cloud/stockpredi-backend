@@ -1,5 +1,7 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from config import Config
 from routes.auth import auth_bp
 from routes.predictions import predictions_bp
@@ -15,6 +17,18 @@ def create_app():
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
+
+    # Rate limiting global
+    limiter = Limiter(
+        key_func=get_remote_address,
+        app=app,
+        default_limits=["200 per hour", "50 per minute"],
+        storage_uri="memory://",
+        headers_enabled=True
+    )
+
+    # Expose limiter pour les blueprints
+    app.limiter = limiter
 
     # Blueprints
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -33,6 +47,10 @@ def create_app():
     @app.errorhandler(405)
     def method_not_allowed(e):
         return jsonify({"error": "Methode non autorisee"}), 405
+
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify({"error": "Trop de requetes", "detail": str(e.description)}), 429
 
     @app.errorhandler(500)
     def internal_error(e):
