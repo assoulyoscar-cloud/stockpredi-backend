@@ -1,6 +1,5 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from config import Config
@@ -9,9 +8,8 @@ from routes.predictions import predictions_bp
 from routes.user import user_bp
 from routes.stripe_routes import stripe_bp
 
-
 def create_app():
-    app = Flask(__name__)CORS(app, origins=["https://stockpredi.vercel.app", "http://localhost:3000"])
+    app = Flask(__name__)
 
     # CORS — frontend uniquement
     CORS(app, origins=[Config.FRONTEND_URL, "http://localhost:3000"],
@@ -58,7 +56,6 @@ def create_app():
         return jsonify({"error": "Erreur serveur interne"}), 500
 
     return app
-
 
 app = create_app()
 
