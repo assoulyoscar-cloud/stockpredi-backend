@@ -11,7 +11,7 @@ from routes.stripe_routes import stripe_bp
 
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__)CORS(app, origins=["https://stockpredi.vercel.app", "http://localhost:3000"])
 
     # CORS — frontend uniquement
     CORS(app, origins=[Config.FRONTEND_URL, "http://localhost:3000"],
