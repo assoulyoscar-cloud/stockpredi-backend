@@ -88,7 +88,7 @@ def stripe_webhook():
         event = stripe.Webhook.construct_event(
             payload, sig, Config.STRIPE_WEBHOOK_SECRET
         )
-    except stripe.errors.SignatureVerificationError:
+    except stripe.SignatureVerificationError:
         return jsonify({"error": "Signature invalide"}), 400
 
     supabase = get_client()
