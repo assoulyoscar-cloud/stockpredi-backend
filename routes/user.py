@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from middleware.auth_middleware import auth_required
+from models.user_store import ensure_user_row
 from supabase import create_client
 from config import Config
 
@@ -16,6 +17,7 @@ def get_profile():
     """GET /api/user/profile — profil utilisateur connecte."""
     supabase = get_client()
     try:
+        ensure_user_row(supabase, request.user_id, request.user_email)
         res = supabase.table("users").select("*")             .eq("id", request.user_id).single().execute()
         return jsonify(res.data), 200
     except Exception as e:
