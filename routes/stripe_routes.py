@@ -14,6 +14,7 @@ import requests as http
 import stripe
 from flask import Blueprint, request, jsonify
 from middleware.auth_middleware import auth_required
+from models.user_store import ensure_user_row
 from config import Config
 from supabase import create_client
 
@@ -106,12 +107,64 @@ def _mois_annee(dt):
 # ---------------------------------------------------------------------------
 # ROUTES EXISTANTES (inchangées)
 # ---------------------------------------------------------------------------
+
+_RESOLVED_PRICE_ID = None
+
+
+def _resolve_recurring_price():
+    """Retourne un price Stripe recurrent mensuel valide (auto-reparation).
+
+    1. Si STRIPE_PRICE_ID est un price recurrent -> l'utiliser.
+    2. Sinon, chercher un price recurrent mensuel actif sur le meme produit.
+    3. Sinon, creer un price recurrent 35 EUR/mois sur le produit.
+    Le resultat est mis en cache en memoire pour la duree du process.
+    """
+    global _RESOLVED_PRICE_ID
+    if _RESOLVED_PRICE_ID:
+        return _RESOLVED_PRICE_ID
+
+    product_id = None
+    configured = Config.STRIPE_PRICE_ID
+    if configured:
+        try:
+            price = stripe.Price.retrieve(configured)
+            if price.get("recurring"):
+                _RESOLVED_PRICE_ID = price["id"]
+                return _RESOLVED_PRICE_ID
+            product_id = price["product"]
+        except stripe.StripeError:
+            product_id = None
+
+    if product_id:
+        prices = stripe.Price.list(product=product_id, active=True, limit=100)
+        for p in prices.get("data", []):
+            rec = p.get("recurring")
+            if rec and rec.get("interval") == "month":
+                _RESOLVED_PRICE_ID = p["id"]
+                return _RESOLVED_PRICE_ID
+
+    create_kwargs = {
+        "unit_amount": 3500,
+        "currency": "eur",
+        "recurring": {"interval": "month"},
+        "nickname": "StockPredi Mensuel 35EUR (auto)",
+    }
+    if product_id:
+        create_kwargs["product"] = product_id
+    else:
+        create_kwargs["product_data"] = {"name": "StockPredi Abonnement Mensuel"}
+    new_price = stripe.Price.create(**create_kwargs)
+    _RESOLVED_PRICE_ID = new_price["id"]
+    return _RESOLVED_PRICE_ID
+
+
 @stripe_bp.route("/create-subscription", methods=["POST"])
 @auth_required
 def create_subscription():
     """Cree un abonnement Stripe pour l'utilisateur connecte."""
     supabase = get_client()
     try:
+        ensure_user_row(supabase, request.user_id, request.user_email)
         user_res = supabase.table("users").select("stripe_customer_id, email") \
             .eq("id", request.user_id).single().execute()
         user = user_res.data
@@ -126,7 +179,7 @@ def create_subscription():
         session = stripe.checkout.Session.create(
             customer=customer_id,
             payment_method_types=["card"],
-            line_items=[{"price": Config.STRIPE_PRICE_ID, "quantity": 1}],
+            line_items=[{"price": _resolve_recurring_price(), "quantity": 1}],
             mode="subscription",
             success_url=f"{Config.FRONTEND_URL}/dashboard?payment=success",
             cancel_url=f"{Config.FRONTEND_URL}/dashboard?payment=cancelled",
@@ -166,6 +219,7 @@ def subscription_status():
     """Retourne le statut abonnement de l'utilisateur."""
     supabase = get_client()
     try:
+        ensure_user_row(supabase, request.user_id, request.user_email)
         res = supabase.table("users") \
             .select("plan, stripe_customer_id, stripe_subscription_id") \
             .eq("id", request.user_id).single().execute()
@@ -497,7 +551,7 @@ def stripe_webhook():
         event = stripe.Webhook.construct_event(
             payload, sig, Config.STRIPE_WEBHOOK_SECRET
         )
-    except stripe.errors.SignatureVerificationError:
+    except stripe.SignatureVerificationError:
         return jsonify({"error": "Signature invalide"}), 400
 
     supabase = get_client()
