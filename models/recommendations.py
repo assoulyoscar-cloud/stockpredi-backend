@@ -1,17 +1,10 @@
 import requests
 import json
+import numpy as np
 from config import Config
 
 
-FALLBACK_RULES = [
-    {"condition": "stockout", "action": "Commander en urgence", "priority": "CRITIQUE"},
-    {"condition": "surplus", "action": "Reduire les commandes prochaines", "priority": "ATTENTION"},
-    {"condition": "normal", "action": "Maintenir le rythme actuel", "priority": "OK"},
-]
-
-
 class OllamaRecommender:
-    """Recommandations IA via Ollama/Llama3.1 avec fallback regles metier."""
 
     def __init__(self):
         self.base_url = Config.OLLAMA_URL
@@ -28,154 +21,137 @@ class OllamaRecommender:
     def _build_prompt(self, context: dict) -> str:
         product = context.get("product_name", "produit")
         alerts = context.get("alerts", [])
-        accuracy = context.get("accuracy_score", 0)
-        avg_forecast = context.get("avg_forecast", 0)
+        accuracy = context.get("accuracy", 0)
         trend = context.get("trend", "stable")
-
-        alert_text = ""
-        if alerts:
-            alert_text = "\n".join(
-                f"- {a['type'].upper()} le {a['date']}: {a['action']}"
-                for a in alerts[:3]
-            )
-        else:
-            alert_text = "Aucune alerte majeure detectee."
-
-        return f"""Tu es un expert en gestion de stock. Analyse ces donnees et donne 3 recommandations concretes et courtes.
+        cv = context.get("cv", 0)
+        return f"""Tu es un expert en gestion de stock pour PME françaises.
 
 Produit: {product}
 Tendance: {trend}
-Prevision moyenne 30j: {avg_forecast:.0f} unites/jour
-Precision modele: {accuracy*100:.0f}%
-Alertes:
-{alert_text}
+Précision modèle: {accuracy:.0%}
+Coefficient de variation (variabilité): {cv:.0%}
+Alertes: {json.dumps(alerts, ensure_ascii=False)}
 
-Reponds en JSON avec ce format exact:
-{{
-  "recommendations": [
-    {{"priority": "CRITIQUE|ATTENTION|OK", "action": "action concrete", "detail": "explication courte"}},
-    {{"priority": "CRITIQUE|ATTENTION|OK", "action": "action concrete", "detail": "explication courte"}},
-    {{"priority": "OK", "action": "action concrete", "detail": "explication courte"}}
-  ],
-  "summary": "une phrase resume"
-}}"""
+Donne 3 recommandations concrètes et adaptées à la situation réelle.
+Si la précision est faible (<50%), signale-le clairement et déconseille de trop se fier aux prévisions.
+Si les données sont très variables (cv>80%), avertis le gérant.
+Format JSON: [{{"action":"...", "detail":"...", "priority":"OK|ATTENTION|CRITIQUE"}}]
+Réponse JSON uniquement, sans texte autour."""
 
-    def _call_ollama(self, prompt: str) -> dict:
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 512}
-        }
-        r = requests.post(
-            f"{self.base_url}/api/generate",
-            json=payload,
-            timeout=self.timeout
-        )
+    def _ollama_recommend(self, context: dict) -> list:
+        prompt = self._build_prompt(context)
+        payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
+        r = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=self.timeout)
         r.raise_for_status()
-        text = r.json().get("response", "")
-        # Extract JSON from response
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            return json.loads(text[start:end])
-        raise ValueError("No JSON in Ollama response")
+        raw = r.json().get("response", "[]")
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
 
-    def _fallback_recommendations(self, context: dict) -> dict:
+    def _smart_fallback(self, context: dict) -> list:
         alerts = context.get("alerts", [])
+        accuracy = context.get("accuracy", 0)
         trend = context.get("trend", "stable")
-        accuracy = context.get("accuracy_score", 0)
-
+        cv = context.get("cv", 0)
         recs = []
-        # Priority based on alerts
-        for alert in alerts[:2]:
-            if alert["type"] == "stockout":
-                recs.append({
-                    "priority": "CRITIQUE",
-                    "action": alert["action"],
-                    "detail": f"Risque de rupture detecte le {alert['date']}"
-                })
-            elif alert["type"] == "surplus":
-                recs.append({
-                    "priority": "ATTENTION",
-                    "action": alert["action"],
-                    "detail": f"Surplus prevu le {alert['date']}"
-                })
 
-        # Trend recommendation
-        if trend == "hausse":
+        if accuracy < 0.40:
             recs.append({
-                "priority": "ATTENTION",
-                "action": "Augmenter les commandes de 15-20%",
-                "detail": "Tendance haussiere detectee sur 30 jours"
+                "action": "Donnees trop irregulières pour une prevision fiable",
+                "detail": f"Precision du modele : {accuracy:.0%}. Vos donnees varient trop fortement — enrichissez l'historique ou verifiez vos chiffres.",
+                "priority": "CRITIQUE"
             })
-        elif trend == "baisse":
+        elif accuracy < 0.60:
             recs.append({
-                "priority": "ATTENTION",
-                "action": "Reduire les commandes de 10-15%",
-                "detail": "Tendance baissiere detectee sur 30 jours"
-            })
-        else:
-            recs.append({
-                "priority": "OK",
-                "action": "Maintenir le niveau de commandes actuel",
-                "detail": "Stock stable, aucune action urgente"
+                "action": "Prevision a prendre avec precaution",
+                "detail": f"Precision de {accuracy:.0%} — Les previsions sont indicatives. Augmentez votre historique pour de meilleurs resultats.",
+                "priority": "ATTENTION"
             })
 
-        # Accuracy warning
-        if accuracy < 0.6:
+        if cv > 0.80:
             recs.append({
-                "priority": "ATTENTION",
-                "action": "Fournir plus de donnees historiques",
-                "detail": f"Precision modele faible ({accuracy*100:.0f}%) — minimum 90 jours recommandes"
-            })
-        else:
-            recs.append({
-                "priority": "OK",
-                "action": "Previsions fiables",
-                "detail": f"Modele precis a {accuracy*100:.0f}%"
+                "action": "Forte variabilite detectee dans vos donnees",
+                "detail": f"Vos ventes fluctuent de {cv:.0%} en moyenne. Verifiez si des evenements exceptionnels faussent l'analyse.",
+                "priority": "ATTENTION"
             })
 
-        # Cap at 3
-        recs = recs[:3]
-        while len(recs) < 3:
+        stockouts = [a for a in alerts if a.get("type") == "stockout"]
+        surpluses = [a for a in alerts if a.get("type") == "surplus"]
+
+        if stockouts:
             recs.append({
-                "priority": "OK",
-                "action": "Surveiller les indicateurs",
-                "detail": "Aucune action requise pour le moment"
+                "action": f"Risque de rupture detecte ({len(stockouts)} periode(s))",
+                "detail": f"Premiere rupture prevue le {stockouts[0].get('date','?')}. Passez commande des maintenant.",
+                "priority": "CRITIQUE"
+            })
+        if surpluses:
+            recs.append({
+                "action": f"Surplus prevu ({len(surpluses)} periode(s))",
+                "detail": f"Reduisez vos commandes pour la periode du {surpluses[0].get('date','?')}.",
+                "priority": "ATTENTION"
             })
 
-        n_alerts = len(alerts)
-        summary = (
-            f"{n_alerts} alerte(s) detectee(s). Tendance {trend}. "
-            f"Precision modele : {accuracy*100:.0f}%."
-        )
-        return {"recommendations": recs, "summary": summary, "source": "rules"}
+        if trend == "hausse" and accuracy >= 0.60:
+            recs.append({
+                "action": "Tendance a la hausse — Anticipez vos approvisionnements",
+                "detail": "Vos ventes progressent. Augmentez legerement vos commandes pour eviter les ruptures.",
+                "priority": "OK"
+            })
+        elif trend == "baisse" and accuracy >= 0.60:
+            recs.append({
+                "action": "Tendance a la baisse — Reduisez vos stocks",
+                "detail": "Vos ventes diminuent. Limitez vos commandes pour eviter les invendus.",
+                "priority": "ATTENTION"
+            })
+        elif accuracy >= 0.60 and not stockouts and not surpluses:
+            recs.append({
+                "action": "Situation stable — Maintenez votre rythme actuel",
+                "detail": "Aucune alerte detectee. Continuez sur cette lancee.",
+                "priority": "OK"
+            })
 
-    def get_recommendations(self, context: dict) -> dict:
+        if not recs:
+            recs.append({
+                "action": "Donnees insuffisantes pour une recommandation precise",
+                "detail": "Ajoutez plus de donnees historiques (minimum 20 semaines recommandees).",
+                "priority": "ATTENTION"
+            })
+
+        return recs[:4]
+
+    def recommend(self, context: dict) -> dict:
         if self._is_ollama_available():
             try:
-                prompt = self._build_prompt(context)
-                result = self._call_ollama(prompt)
-                result["source"] = "ollama"
-                return result
-            except Exception as e:
-                pass  # Silent fallback
-        return self._fallback_recommendations(context)
+                recs = self._ollama_recommend(context)
+                if recs:
+                    return {"recommendations": recs, "ai_source": "ollama"}
+            except Exception:
+                pass
+        recs = self._smart_fallback(context)
+        return {"recommendations": recs, "ai_source": "rules"}
 
 
-def compute_trend(predictions: list) -> str:
-    """Detecte la tendance generale sur les previsions."""
-    if len(predictions) < 7:
+def compute_trend(df) -> str:
+    import numpy as np
+    if df is None or len(df) < 4:
         return "stable"
-    values = [p["forecast"] for p in predictions]
-    first_week = sum(values[:7]) / 7
-    last_week = sum(values[-7:]) / 7
-    if first_week == 0:
+    y = df["y"].values
+    x = np.arange(len(y))
+    slope = np.polyfit(x, y, 1)[0]
+    mean_y = y.mean()
+    if mean_y == 0:
         return "stable"
-    delta = (last_week - first_week) / first_week
-    if delta > 0.15:
+    relative_slope = slope / mean_y
+    if relative_slope > 0.015:
         return "hausse"
-    if delta < -0.15:
+    elif relative_slope < -0.015:
         return "baisse"
     return "stable"
+
+
+def compute_cv(df) -> float:
+    if df is None or len(df) < 2:
+        return 0.0
+    mean = df["y"].mean()
+    if mean == 0:
+        return 0.0
+    return float(df["y"].std() / mean)
