@@ -24,7 +24,7 @@ def parse_data(raw: list) -> pd.DataFrame:
 
 @predictions_bp.route("/forecast", methods=["POST"])
 @auth_required
-def forecast(user_id: str):
+def forecast():
     try:
         body = request.get_json() or {}
         raw = body.get("data", [])
@@ -41,7 +41,7 @@ def forecast(user_id: str):
 
 @predictions_bp.route("/recommendations", methods=["POST"])
 @auth_required
-def recommendations(user_id: str):
+def recommendations():
     try:
         body = request.get_json() or {}
         raw = body.get("data", [])
