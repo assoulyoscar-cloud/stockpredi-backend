@@ -55,7 +55,7 @@ def recommendations():
         accuracy_score = forecast_result.get("accuracy_score", 0)
 
         predictions_list = forecast_result.get("predictions", [])
-        alerts = detect_alerts(predictions_list, df)
+        alerts = detect_alerts(predictions_list)
 
         trend = compute_trend(df)
         cv = compute_cv(df)
