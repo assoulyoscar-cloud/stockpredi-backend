@@ -30,7 +30,7 @@ def get_current_user(f):
     def decorated_function(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
         if not auth_header:
-            return jsonify({'error': 'Pas de token'}), 401
+            return jsonify({'error': 'Pas de token', 'code': 'NO_AUTH_HEADER'}), 401
 
         try:
             token = auth_header.split(' ')[1]
@@ -40,10 +40,34 @@ def get_current_user(f):
             request.user_id = user_data.user.id
             request.user_email = user_data.user.email
         except Exception as e:
-            return jsonify({'error': f'Token invalide: {str(e)}'}), 401
+            return jsonify({'error': f'Token invalide: {str(e)}', 'code': 'INVALID_TOKEN'}), 401
 
         return f(*args, **kwargs)
     return decorated_function
+
+
+@rgpd_bp.route('/api/rgpd/debug', methods=['GET'])
+def debug_status():
+    """Endpoint de debug - vérifie la configuration RGPD"""
+    try:
+        status = {
+            'supabase_url': bool(os.getenv('SUPABASE_URL')),
+            'supabase_key': bool(os.getenv('SUPABASE_ANON_KEY')),
+            'resend_api_key': bool(os.getenv('RESEND_API_KEY')),
+            'google_service_account': bool(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')),
+            'google_drive_folder': bool(os.getenv('GOOGLE_DRIVE_FOLDER_ID')),
+            'owner_email': os.getenv('OWNER_EMAIL', 'not set'),
+            'all_configured': all([
+                os.getenv('SUPABASE_URL'),
+                os.getenv('SUPABASE_ANON_KEY'),
+                os.getenv('RESEND_API_KEY'),
+                os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'),
+                os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+            ])
+        }
+        return jsonify(status), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @rgpd_bp.route('/api/rgpd/export', methods=['POST'])
@@ -56,11 +80,16 @@ def export_user_data():
     try:
         user_email = request.user_email
         user_id = request.user_id
+
+        print(f"[RGPD EXPORT] Exporting for user {user_id} ({user_email})")
+
         supabase = get_supabase()
 
         # Récupère les infos de l'utilisateur depuis Supabase
+        print(f"[RGPD EXPORT] Fetching user data from Supabase...")
         user_response = supabase.table('users').select('*').eq('id', user_id).single().execute()
         user_data = user_response.data
+        print(f"[RGPD EXPORT] User data fetched: {user_data.get('name')}")
 
         # Prépare les données du client AVEC son email
         client_data = {
@@ -71,21 +100,30 @@ def export_user_data():
             'created_at': user_data.get('created_at', datetime.now().isoformat())
         }
 
+        print(f"[RGPD EXPORT] Client data prepared: {client_data}")
+
         # Initialise Google Drive (optionnel)
         drive_service = None
         try:
             service_account_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')
             folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
             if service_account_json and folder_id:
+                print(f"[RGPD EXPORT] Initializing Google Drive service...")
                 drive_service = GoogleDriveService(service_account_json, folder_id)
+                print(f"[RGPD EXPORT] Google Drive service initialized")
+            else:
+                print(f"[RGPD EXPORT] Google Drive not configured (account: {bool(service_account_json)}, folder: {bool(folder_id)})")
         except Exception as e:
-            print(f"Google Drive non disponible: {str(e)}")
+            print(f"[RGPD EXPORT] Google Drive error: {str(e)}")
 
         # Lance l'archivage (envoie à l'email du client)
+        print(f"[RGPD EXPORT] Starting archive_client_signup...")
         result = archive_client_signup(client_data, drive_service)
+        print(f"[RGPD EXPORT] Archive result: {result}")
 
         # Log l'action dans rgpd_audit
         try:
+            print(f"[RGPD EXPORT] Logging to audit table...")
             supabase.table('rgpd_audit').insert({
                 'user_id': user_id,
                 'action': 'data_export',
@@ -94,8 +132,9 @@ def export_user_data():
                 'ip_address': request.remote_addr,
                 'user_agent': request.headers.get('User-Agent')
             }).execute()
+            print(f"[RGPD EXPORT] Audit logged successfully")
         except Exception as e:
-            print(f"Erreur audit: {str(e)}")
+            print(f"[RGPD EXPORT] Erreur audit: {str(e)}")
 
         if result['success']:
             return jsonify({
@@ -110,6 +149,9 @@ def export_user_data():
             }), 500
 
     except Exception as e:
+        print(f"[RGPD EXPORT] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
 
 
