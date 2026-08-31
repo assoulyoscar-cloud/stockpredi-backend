@@ -46,7 +46,7 @@ def get_current_user(f):
     return decorated_function
 
 
-@rgpd_bp.route('/api/rgpd/debug', methods=['GET'])
+@rgpd_bp.route('/debug', methods=['GET'])
 def debug_status():
     """Endpoint de debug - vérifie la configuration RGPD"""
     try:
@@ -70,7 +70,7 @@ def debug_status():
         return jsonify({'error': str(e)}), 500
 
 
-@rgpd_bp.route('/api/rgpd/export', methods=['POST'])
+@rgpd_bp.route('/export', methods=['POST'])
 @get_current_user
 def export_user_data():
     """
@@ -155,7 +155,7 @@ def export_user_data():
         return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
 
 
-@rgpd_bp.route('/api/rgpd/status', methods=['GET'])
+@rgpd_bp.route('/status', methods=['GET'])
 @get_current_user
 def export_status():
     """Récupère l'historique des exports de l'utilisateur"""
@@ -178,7 +178,7 @@ def export_status():
         return jsonify({'error': f'Erreur: {str(e)}'}), 500
 
 
-@rgpd_bp.route('/api/rgpd/delete', methods=['DELETE'])
+@rgpd_bp.route('/delete', methods=['DELETE'])
 @get_current_user
 def delete_account():
     """Supprime complètement le compte et les données de l'utilisateur"""
@@ -222,7 +222,7 @@ def delete_account():
         return jsonify({'error': f'Erreur: {str(e)}'}), 500
 
 
-@rgpd_bp.route('/api/rgpd/contact', methods=['POST'])
+@rgpd_bp.route('/contact', methods=['POST'])
 def contact_dpo():
     """Formulaire de contact pour le DPO"""
     try:
@@ -256,3 +256,4 @@ def contact_dpo():
 
     except Exception as e:
         return jsonify({'error': f'Erreur: {str(e)}'}), 500
+
