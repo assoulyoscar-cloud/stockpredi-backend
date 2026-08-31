@@ -42,7 +42,7 @@ def get_current_user(f):
 
             # Decode JWT without signature verification (Supabase verifies on their end)
             # The token was already verified by Supabase when the client got it
-            decoded = pyjwt.decode(token, options={"verify_signature": False})
+            decoded = pyjwt.decode(token, options={"verify_signature": False}, algorithms=["HS256"])
 
             # Extract user info from JWT claims
             request.user_id = decoded.get('sub')
