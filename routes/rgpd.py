@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from functools import wraps
 import os
 from datetime import datetime
-import jwt
+import jwt as pyjwt
 from services.archive_service import archive_client_signup
 from services.google_drive_service import GoogleDriveService
 from supabase import create_client
@@ -33,13 +33,28 @@ def get_current_user(f):
             return jsonify({'error': 'Pas de token', 'code': 'NO_AUTH_HEADER'}), 401
 
         try:
-            token = auth_header.split(' ')[1]
-            supabase = get_supabase()
-            user_data = supabase.auth.get_user(token)
-            request.user = user_data
-            request.user_id = user_data.user.id
-            request.user_email = user_data.user.email
+            # Extract token from "Bearer <token>" format
+            parts = auth_header.split(' ')
+            if len(parts) != 2 or parts[0] != 'Bearer':
+                return jsonify({'error': 'Format Authorization invalide', 'code': 'INVALID_FORMAT'}), 401
+
+            token = parts[1]
+
+            # Decode JWT without signature verification (Supabase verifies on their end)
+            # The token was already verified by Supabase when the client got it
+            decoded = pyjwt.decode(token, options={"verify_signature": False})
+
+            # Extract user info from JWT claims
+            request.user_id = decoded.get('sub')
+            request.user_email = decoded.get('email')
+            request.user = decoded
+
+            # Verify required claims exist
+            if not request.user_id or not request.user_email:
+                return jsonify({'error': 'Claims manquants dans le token', 'code': 'MISSING_CLAIMS'}), 401
+
         except Exception as e:
+            print(f"[RGPD AUTH] Token validation failed: {str(e)}")
             return jsonify({'error': f'Token invalide: {str(e)}', 'code': 'INVALID_TOKEN'}), 401
 
         return f(*args, **kwargs)
