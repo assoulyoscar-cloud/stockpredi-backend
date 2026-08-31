@@ -50,7 +50,7 @@ def generate_archive_pdf(client_data: dict) -> bytes:
     elements.append(Paragraph("📋 Archivage Profil Client", title_style))
     elements.append(Spacer(1, 0.2*inch))
 
-    # Infos client
+    # Infos client - AVEC L'EMAIL DU CLIENT
     info_data = [
         ['Email', client_data.get('email', 'N/A')],
         ['Nom', client_data.get('name', 'N/A')],
@@ -123,15 +123,15 @@ def generate_archive_pdf(client_data: dict) -> bytes:
     return buffer.read()
 
 
-def send_archive_email(client_email: str, pdf_bytes: bytes, filename: str, owner_email: str = None) -> bool:
+def send_archive_email(client_email: str, pdf_bytes: bytes, filename: str) -> bool:
     """
     Envoie l'archive PDF par email via Resend API
+    IMPORTANT: Envoie TOUJOURS à client_email, JAMAIS à oscar@stockpredi.fr
 
     Args:
-        client_email: Email du client
+        client_email: Email du CLIENT (oarevolut@gmail.com, pas oscar@stockpredi.fr)
         pdf_bytes: Contenu du PDF
         filename: Nom du fichier PDF
-        owner_email: Email du propriétaire (pour CC)
 
     Returns:
         True si succès, False sinon
@@ -146,9 +146,11 @@ def send_archive_email(client_email: str, pdf_bytes: bytes, filename: str, owner
         pdf_base64 = __import__('base64').b64encode(pdf_bytes).decode('utf-8')
 
         # Prépare le payload Resend
+        # ENVOIE DE: contact@stockpredi.fr (ou oscar@stockpredi.fr)
+        # ENVOIE À: client_email (oarevolut@gmail.com)
         payload = {
-            "from": owner_email or os.getenv('OWNER_EMAIL', 'contact@stockpredi.fr'),
-            "to": client_email,
+            "from": os.getenv('OWNER_EMAIL', 'contact@stockpredi.fr'),
+            "to": client_email,  # C'EST ICI: email du client, pas oscar@stockpredi.fr
             "subject": f"📋 Archivage de vos données - {filename}",
             "html": f"""
             <h2>Bienvenue sur StockPredi!</h2>
@@ -199,13 +201,14 @@ def archive_client_signup(client_data: dict, drive_service=None) -> dict:
 
     Args:
         client_data: Dict avec email, name, user_id, created_at, plan, etc.
+                    email DOIT être l'email du client (oarevolut@gmail.com)
         drive_service: Instance GoogleDriveService (optionnel)
 
     Returns:
         Dict avec le statut de l'archivage
     """
     try:
-        # Génère le PDF
+        # Génère le PDF avec les infos du client
         pdf_bytes = generate_archive_pdf(client_data)
 
         # Prépare le nom du fichier
@@ -213,9 +216,9 @@ def archive_client_signup(client_data: dict, drive_service=None) -> dict:
         client_name = client_data.get('name', 'client').replace(' ', '_').lower()
         filename = f"{client_name}_{timestamp}.pdf"
 
-        # Envoie l'email
-        owner_email = os.getenv('OWNER_EMAIL', 'oscar@stockpredi.fr')
-        email_sent = send_archive_email(client_data.get('email'), pdf_bytes, filename, owner_email)
+        # Envoie l'email AU CLIENT (pas au propriétaire!)
+        client_email = client_data.get('email')
+        email_sent = send_archive_email(client_email, pdf_bytes, filename)
 
         # Upload sur Google Drive (optionnel)
         drive_result = None
