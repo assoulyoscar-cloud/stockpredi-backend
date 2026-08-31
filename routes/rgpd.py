@@ -12,10 +12,16 @@ from supabase import create_client
 
 rgpd_bp = Blueprint('rgpd', __name__)
 
-# Supabase
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY')
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_supabase():
+    """Crée une instance Supabase lazy (à la demande)"""
+    SUPABASE_URL = os.getenv('SUPABASE_URL')
+    SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY')
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise Exception("Supabase env vars not configured")
+
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def get_current_user(f):
@@ -28,6 +34,7 @@ def get_current_user(f):
 
         try:
             token = auth_header.split(' ')[1]
+            supabase = get_supabase()
             user_data = supabase.auth.get_user(token)
             request.user = user_data
             request.user_id = user_data.user.id
@@ -49,6 +56,7 @@ def export_user_data():
     try:
         user_email = request.user_email
         user_id = request.user_id
+        supabase = get_supabase()
 
         # Récupère les infos de l'utilisateur depuis Supabase
         user_response = supabase.table('users').select('*').eq('id', user_id).single().execute()
@@ -111,6 +119,7 @@ def export_status():
     """Récupère l'historique des exports de l'utilisateur"""
     try:
         user_id = request.user_id
+        supabase = get_supabase()
 
         exports = supabase.table('rgpd_audit').select(
             'id, action, details, status, timestamp'
@@ -134,6 +143,7 @@ def delete_account():
     try:
         user_id = request.user_id
         user_email = request.user_email
+        supabase = get_supabase()
 
         # Log la suppression
         try:
@@ -182,6 +192,7 @@ def contact_dpo():
 
         # Log la demande
         try:
+            supabase = get_supabase()
             supabase.table('rgpd_audit').insert({
                 'user_id': None,
                 'action': 'dpo_contact',
