@@ -97,16 +97,8 @@ def export_user_data():
         print(f"[RGPD EXPORT] Exporting for user {user_id} ({user_email})")
 
         supabase = get_supabase()
-
-        # Récupère les infos de l'utilisateur depuis Supabase
-        print(f"[RGPD EXPORT] Fetching user data from Supabase...")
-        try:
-            user_response = supabase.table('users').select('*').eq('id', user_id).maybe_single().execute()
-            user_data = user_response.data or {}
-        except Exception as ue:
-            print(f"[RGPD EXPORT] users table error (using fallback): {ue}")
-            user_data = {}
-        print(f"[RGPD EXPORT] User data fetched")
+        user_data = {'email': user_email, 'name': user_email.split('@')[0]}
+        print(f"[RGPD EXPORT] User: {user_email}")
 
         # Prépare les données du client AVEC son email
         client_data = {
@@ -217,9 +209,8 @@ def delete_account():
         except Exception as e:
             print(f"Erreur audit suppression: {str(e)}")
 
-        # Supprime les données utilisateur
+        # Supprime uniquement les prévisions (pas de table users publique)
         try:
-            supabase.table('users').delete().eq('id', user_id).execute()
             supabase.table('predictions').delete().eq('user_id', user_id).execute()
         except Exception as e:
             print(f"Erreur suppression données: {str(e)}")
