@@ -149,7 +149,7 @@ def send_archive_email(client_email: str, pdf_bytes: bytes, filename: str) -> bo
         # ENVOIE DE: contact@stockpredi.fr (ou oscar@stockpredi.fr)
         # ENVOIE À: client_email (oarevolut@gmail.com)
         payload = {
-            "from": os.getenv('OWNER_EMAIL', 'contact@stockpredi.fr'),
+            "from": "StockPredi <onboarding@resend.dev>",
             "to": client_email,  # C'EST ICI: email du client, pas oscar@stockpredi.fr
             "subject": f"📋 Archivage de vos données - {filename}",
             "html": f"""
