@@ -16,11 +16,9 @@ rgpd_bp = Blueprint('rgpd', __name__)
 def get_supabase():
     """Crée une instance Supabase lazy (à la demande)"""
     SUPABASE_URL = os.getenv('SUPABASE_URL')
-    SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY')
-
+    SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY')
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise Exception("Supabase env vars not configured")
-
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
@@ -102,9 +100,13 @@ def export_user_data():
 
         # Récupère les infos de l'utilisateur depuis Supabase
         print(f"[RGPD EXPORT] Fetching user data from Supabase...")
-        user_response = supabase.table('users').select('*').eq('id', user_id).single().execute()
-        user_data = user_response.data
-        print(f"[RGPD EXPORT] User data fetched: {user_data.get('name')}")
+        try:
+            user_response = supabase.table('users').select('*').eq('id', user_id).maybe_single().execute()
+            user_data = user_response.data or {}
+        except Exception as ue:
+            print(f"[RGPD EXPORT] users table error (using fallback): {ue}")
+            user_data = {}
+        print(f"[RGPD EXPORT] User data fetched")
 
         # Prépare les données du client AVEC son email
         client_data = {
