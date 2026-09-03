@@ -2,10 +2,9 @@
 Routes RGPD - Export données, suppression compte, contact DPO
 """
 from flask import Blueprint, request, jsonify
-from functools import wraps
 import os
 from datetime import datetime
-import jwt as pyjwt
+from middleware.auth_middleware import auth_required
 from services.archive_service import archive_client_signup
 from services.google_drive_service import GoogleDriveService
 from supabase import create_client
@@ -14,49 +13,15 @@ rgpd_bp = Blueprint('rgpd', __name__)
 
 
 def get_supabase():
-    """Crée une instance Supabase lazy (à la demande)"""
+    """Crée une instance Supabase lazy (à la demande) — clé service,
+    même pattern que middleware/auth_middleware.py et routes/user.py."""
     SUPABASE_URL = os.getenv('SUPABASE_URL')
-    SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY')
+    SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
+
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise Exception("Supabase env vars not configured")
+
     return create_client(SUPABASE_URL, SUPABASE_KEY)
-
-
-def get_current_user(f):
-    """Décorateur pour vérifier l'authentification"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'Pas de token', 'code': 'NO_AUTH_HEADER'}), 401
-
-        try:
-            # Extract token from "Bearer <token>" format
-            parts = auth_header.split(' ')
-            if len(parts) != 2 or parts[0] != 'Bearer':
-                return jsonify({'error': 'Format Authorization invalide', 'code': 'INVALID_FORMAT'}), 401
-
-            token = parts[1]
-
-            # Decode JWT without signature verification (Supabase verifies on their end)
-            # The token was already verified by Supabase when the client got it
-            decoded = pyjwt.decode(token, options={"verify_signature": False}, algorithms=["HS256"])
-
-            # Extract user info from JWT claims
-            request.user_id = decoded.get('sub')
-            request.user_email = decoded.get('email')
-            request.user = decoded
-
-            # Verify required claims exist
-            if not request.user_id or not request.user_email:
-                return jsonify({'error': 'Claims manquants dans le token', 'code': 'MISSING_CLAIMS'}), 401
-
-        except Exception as e:
-            print(f"[RGPD AUTH] Token validation failed: {str(e)}")
-            return jsonify({'error': f'Token invalide: {str(e)}', 'code': 'INVALID_TOKEN'}), 401
-
-        return f(*args, **kwargs)
-    return decorated_function
 
 
 @rgpd_bp.route('/debug', methods=['GET'])
@@ -65,14 +30,15 @@ def debug_status():
     try:
         status = {
             'supabase_url': bool(os.getenv('SUPABASE_URL')),
-            'supabase_key': bool(os.getenv('SUPABASE_ANON_KEY')),
+            'supabase_anon_key': bool(os.getenv('SUPABASE_ANON_KEY')),
+            'supabase_service_key': bool(os.getenv('SUPABASE_SERVICE_KEY')),
             'resend_api_key': bool(os.getenv('RESEND_API_KEY')),
             'google_service_account': bool(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')),
             'google_drive_folder': bool(os.getenv('GOOGLE_DRIVE_FOLDER_ID')),
             'owner_email': os.getenv('OWNER_EMAIL', 'not set'),
             'all_configured': all([
                 os.getenv('SUPABASE_URL'),
-                os.getenv('SUPABASE_ANON_KEY'),
+                os.getenv('SUPABASE_SERVICE_KEY'),
                 os.getenv('RESEND_API_KEY'),
                 os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'),
                 os.getenv('GOOGLE_DRIVE_FOLDER_ID')
@@ -84,7 +50,7 @@ def debug_status():
 
 
 @rgpd_bp.route('/export', methods=['POST'])
-@get_current_user
+@auth_required
 def export_user_data():
     """
     Exporte les données personnelles de l'utilisateur en PDF
@@ -97,8 +63,12 @@ def export_user_data():
         print(f"[RGPD EXPORT] Exporting for user {user_id} ({user_email})")
 
         supabase = get_supabase()
-        user_data = {'email': user_email, 'name': user_email.split('@')[0]}
-        print(f"[RGPD EXPORT] User: {user_email}")
+
+        # Récupère les infos de l'utilisateur depuis Supabase
+        print(f"[RGPD EXPORT] Fetching user data from Supabase...")
+        user_response = supabase.table('users').select('*').eq('id', user_id).single().execute()
+        user_data = user_response.data
+        print(f"[RGPD EXPORT] User data fetched: {user_data.get('name')}")
 
         # Prépare les données du client AVEC son email
         client_data = {
@@ -165,7 +135,7 @@ def export_user_data():
 
 
 @rgpd_bp.route('/status', methods=['GET'])
-@get_current_user
+@auth_required
 def export_status():
     """Récupère l'historique des exports de l'utilisateur"""
     try:
@@ -188,7 +158,7 @@ def export_status():
 
 
 @rgpd_bp.route('/delete', methods=['DELETE'])
-@get_current_user
+@auth_required
 def delete_account():
     """Supprime complètement le compte et les données de l'utilisateur"""
     try:
@@ -209,8 +179,9 @@ def delete_account():
         except Exception as e:
             print(f"Erreur audit suppression: {str(e)}")
 
-        # Supprime uniquement les prévisions (pas de table users publique)
+        # Supprime les données utilisateur
         try:
+            supabase.table('users').delete().eq('id', user_id).execute()
             supabase.table('predictions').delete().eq('user_id', user_id).execute()
         except Exception as e:
             print(f"Erreur suppression données: {str(e)}")
@@ -264,5 +235,3 @@ def contact_dpo():
 
     except Exception as e:
         return jsonify({'error': f'Erreur: {str(e)}'}), 500
-
-
