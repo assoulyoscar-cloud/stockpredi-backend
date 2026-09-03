@@ -1,12 +1,12 @@
 """
 Routes RGPD - Export données, suppression compte, contact DPO
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 import os
 from datetime import datetime
 from middleware.auth_middleware import auth_required
-from services.archive_service import archive_client_signup
-from services.google_drive_service import GoogleDriveService
+from services.archive_service import generate_archive_pdf
+from services.google_drive_service import get_google_drive_service
 from supabase import create_client
 
 rgpd_bp = Blueprint('rgpd', __name__)
@@ -32,16 +32,12 @@ def debug_status():
             'supabase_url': bool(os.getenv('SUPABASE_URL')),
             'supabase_anon_key': bool(os.getenv('SUPABASE_ANON_KEY')),
             'supabase_service_key': bool(os.getenv('SUPABASE_SERVICE_KEY')),
-            'resend_api_key': bool(os.getenv('RESEND_API_KEY')),
             'google_service_account': bool(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')),
             'google_drive_folder': bool(os.getenv('GOOGLE_DRIVE_FOLDER_ID')),
             'owner_email': os.getenv('OWNER_EMAIL', 'not set'),
             'all_configured': all([
                 os.getenv('SUPABASE_URL'),
                 os.getenv('SUPABASE_SERVICE_KEY'),
-                os.getenv('RESEND_API_KEY'),
-                os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'),
-                os.getenv('GOOGLE_DRIVE_FOLDER_ID')
             ])
         }
         return jsonify(status), 200
@@ -53,84 +49,101 @@ def debug_status():
 @auth_required
 def export_user_data():
     """
-    Exporte les données personnelles de l'utilisateur en PDF
-    Envoie le PDF à L'EMAIL DU CLIENT (pas au propriétaire)
+    Génère un PDF avec les données personnelles de l'utilisateur, le
+    renvoie DIRECTEMENT en téléchargement (pas d'email), et en archive
+    une copie sur Google Drive pour l'audit RGPD interne.
     """
-    try:
-        user_email = request.user_email
-        user_id = request.user_id
+    user_id = request.user_id
+    user_email = request.user_email
 
+    try:
         print(f"[RGPD EXPORT] Exporting for user {user_id} ({user_email})")
 
         supabase = get_supabase()
 
         # Récupère les infos de l'utilisateur depuis Supabase
-        print(f"[RGPD EXPORT] Fetching user data from Supabase...")
-        user_response = supabase.table('users').select('*').eq('id', user_id).single().execute()
-        user_data = user_response.data
-        print(f"[RGPD EXPORT] User data fetched: {user_data.get('name')}")
+        user_data = {}
+        try:
+            user_response = supabase.table('users').select('*').eq('id', user_id).single().execute()
+            user_data = user_response.data or {}
+        except Exception as e:
+            print(f"[RGPD EXPORT] Impossible de charger la ligne users: {str(e)}")
 
-        # Prépare les données du client AVEC son email
+        # Prépare les données du client — `or` plutôt que `.get(k, default)`
+        # pour ne pas laisser passer une valeur explicitement NULL en base.
         client_data = {
-            'email': user_email,  # EMAIL DU CLIENT, pas du propriétaire
-            'name': user_data.get('name', 'Client'),
+            'email': user_email,
+            'name': user_data.get('name') or 'Client',
             'user_id': user_id,
-            'plan': user_data.get('plan', 'trial'),
-            'created_at': user_data.get('created_at', datetime.now().isoformat())
+            'plan': user_data.get('plan') or 'trial',
+            'created_at': user_data.get('created_at') or datetime.now().isoformat()
         }
 
         print(f"[RGPD EXPORT] Client data prepared: {client_data}")
 
-        # Initialise Google Drive (optionnel)
-        drive_service = None
+        # Génère le PDF
+        pdf_bytes = generate_archive_pdf(client_data)
+
+        timestamp = datetime.now().strftime('%Y%m%d')
+        safe_name = (client_data.get('name') or 'client').replace(' ', '_').lower()
+        filename = f"{safe_name}_{timestamp}.pdf"
+
+        # Archive une copie sur Google Drive — best-effort, ne doit jamais
+        # empêcher le client de récupérer son téléchargement.
+        drive_uploaded = False
+        drive_file_id = None
         try:
-            service_account_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')
-            folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-            if service_account_json and folder_id:
-                print(f"[RGPD EXPORT] Initializing Google Drive service...")
-                drive_service = GoogleDriveService(service_account_json, folder_id)
-                print(f"[RGPD EXPORT] Google Drive service initialized")
+            drive_service = get_google_drive_service()
+            if drive_service:
+                drive_result = drive_service.upload_pdf(pdf_bytes, filename)
+                drive_uploaded = bool(drive_result and drive_result.get('success'))
+                drive_file_id = drive_result.get('file_id') if drive_result else None
+                if not drive_uploaded:
+                    print(f"[RGPD EXPORT] Upload Drive echoue: {drive_result}")
             else:
-                print(f"[RGPD EXPORT] Google Drive not configured (account: {bool(service_account_json)}, folder: {bool(folder_id)})")
+                print("[RGPD EXPORT] Google Drive non configure — export local uniquement")
         except Exception as e:
-            print(f"[RGPD EXPORT] Google Drive error: {str(e)}")
+            print(f"[RGPD EXPORT] Erreur upload Google Drive: {str(e)}")
 
-        # Lance l'archivage (envoie à l'email du client)
-        print(f"[RGPD EXPORT] Starting archive_client_signup...")
-        result = archive_client_signup(client_data, drive_service)
-        print(f"[RGPD EXPORT] Archive result: {result}")
-
-        # Log l'action dans rgpd_audit
+        # Log l'action dans rgpd_audit — ne bloque jamais le téléchargement
         try:
-            print(f"[RGPD EXPORT] Logging to audit table...")
             supabase.table('rgpd_audit').insert({
                 'user_id': user_id,
                 'action': 'data_export',
-                'details': {'email_sent': result.get('email_sent'), 'filename': result.get('filename')},
-                'status': 'success' if result['success'] else 'failed',
+                'details': {'drive_uploaded': drive_uploaded, 'drive_file_id': drive_file_id, 'filename': filename},
+                'status': 'success',
                 'ip_address': request.remote_addr,
                 'user_agent': request.headers.get('User-Agent')
             }).execute()
-            print(f"[RGPD EXPORT] Audit logged successfully")
         except Exception as e:
             print(f"[RGPD EXPORT] Erreur audit: {str(e)}")
 
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'message': f'Export envoyé à {user_email}',
-                'details': result
-            }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Erreur export')
-            }), 500
+        # Renvoie le PDF directement au client — téléchargement local
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Access-Control-Expose-Headers': 'Content-Disposition',
+            }
+        )
 
     except Exception as e:
         print(f"[RGPD EXPORT] Error: {str(e)}")
         import traceback
         traceback.print_exc()
+        # Log l'échec dans l'audit si possible
+        try:
+            get_supabase().table('rgpd_audit').insert({
+                'user_id': user_id,
+                'action': 'data_export',
+                'details': {'error': str(e)},
+                'status': 'failed',
+                'ip_address': request.remote_addr,
+                'user_agent': request.headers.get('User-Agent')
+            }).execute()
+        except Exception:
+            pass
         return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
 
 
