@@ -4,6 +4,94 @@ import numpy as np
 from config import Config
 
 
+SECTOR_CONFIG = {
+    "restaurant": {
+        "label": "Restaurant / Traiteur",
+        "unit": "couverts",
+        "perishable": True,
+        "peak_days": "vendredi-samedi",
+        "seasonality": "Pics le week-end et jours fériés. Baisse en janvier et août.",
+        "stockout_advice": "Rupture = clients perdus définitivement. Commandez 10-15% de marge.",
+        "surplus_advice": "Produits périssables = perte sèche. Réduisez les quantités ou congelez.",
+        "stable_advice": "Maintenez vos commandes fournisseurs actuelles. Surveillez les réservations.",
+        "hausse_advice": "Préparez vos fournisseurs à une hausse. Négociez des conditions de volume.",
+        "baisse_advice": "Adaptez vos menus et portions. Réduisez le gaspillage.",
+    },
+    "epicerie": {
+        "label": "Épicerie / Alimentation",
+        "unit": "articles",
+        "perishable": True,
+        "peak_days": "samedi",
+        "seasonality": "Pics avant fêtes (Noël, Pâques). Baisse en été (vacances).",
+        "stockout_advice": "Rayons vides = image dégradée. Passez commande immédiatement.",
+        "surplus_advice": "Vérifiez les DLC. Mettez en promotion avant péremption.",
+        "stable_advice": "Optimisez vos rotations. Vérifiez les DLC des produits à faible rotation.",
+        "hausse_advice": "Augmentez les commandes sur les références à forte rotation.",
+        "baisse_advice": "Réduisez les références peu vendues. Concentrez-vous sur les best-sellers.",
+    },
+    "boulangerie": {
+        "label": "Boulangerie / Pâtisserie",
+        "unit": "pièces",
+        "perishable": True,
+        "peak_days": "dimanche matin",
+        "seasonality": "Pics le dimanche et jours fériés. Galettes en janvier, bûches en décembre.",
+        "stockout_advice": "Pain en rupture = perte de clientèle fidèle. Augmentez les fournées.",
+        "surplus_advice": "Invendus du jour = perte. Ajustez les quantités au plus juste.",
+        "stable_advice": "Production régulière adaptée. Surveillez la météo (impact sur la fréquentation).",
+        "hausse_advice": "Prévoyez des fournées supplémentaires. Vérifiez vos stocks de matières premières.",
+        "baisse_advice": "Réduisez les fournées. Proposez des offres fin de journée pour limiter les pertes.",
+    },
+    "pepiniere": {
+        "label": "Pépinière / Jardinerie",
+        "unit": "plants/articles",
+        "perishable": False,
+        "peak_days": "samedi-dimanche",
+        "seasonality": "Très forte saisonnalité : pic mars-juin (plantations), creux nov-fév. Second pic sept-oct.",
+        "stockout_advice": "La saison de plantation n'attend pas. Commandez 3-4 mois en avance auprès des producteurs.",
+        "surplus_advice": "Les plants invendus perdent de la valeur mais survivent. Stockez ou soldez en fin de saison.",
+        "stable_advice": "Préparez la saison suivante. Commandez les vivaces et arbustes maintenant.",
+        "hausse_advice": "Saison forte en approche. Sécurisez vos approvisionnements chez les grossistes.",
+        "baisse_advice": "Hors saison normal. Concentrez-vous sur le conseil, l'entretien et les accessoires.",
+    },
+    "boutique": {
+        "label": "Boutique / Commerce de détail",
+        "unit": "articles",
+        "perishable": False,
+        "peak_days": "samedi",
+        "seasonality": "Pics : soldes (jan/juil), rentrée (sept), fêtes (déc). Creux : février, août.",
+        "stockout_advice": "Article manquant = vente perdue. Réapprovisionnez les best-sellers en priorité.",
+        "surplus_advice": "Stock dormant = trésorerie bloquée. Soldez ou faites des ventes privées.",
+        "stable_advice": "Bon rythme. Optimisez l'assortiment et renouvelez les vitrines.",
+        "hausse_advice": "Augmentez vos commandes sur les tendances fortes. Préparez votre vitrine.",
+        "baisse_advice": "Période creuse. Déstockez, faites du click & collect ou des promotions ciblées.",
+    },
+    "bureau_etude": {
+        "label": "Bureau d'études / Services",
+        "unit": "fournitures/consommables",
+        "perishable": False,
+        "peak_days": "lundi-vendredi",
+        "seasonality": "Activité liée aux cycles projets. Creux en août et fin décembre.",
+        "stockout_advice": "Consommables manquants = projets ralentis. Passez commande groupée.",
+        "surplus_advice": "Surstock de fournitures = capital immobilisé inutilement.",
+        "stable_advice": "Consommation régulière. Mettez en place une commande automatique mensuelle.",
+        "hausse_advice": "Nouveaux projets en vue. Anticipez les besoins en fournitures et licences.",
+        "baisse_advice": "Période calme. Reportez les achats non urgents.",
+    },
+    "general": {
+        "label": "Général",
+        "unit": "unités",
+        "perishable": False,
+        "peak_days": "",
+        "seasonality": "",
+        "stockout_advice": "Passez commande dès maintenant.",
+        "surplus_advice": "Réduisez vos commandes pour la période concernée.",
+        "stable_advice": "Maintenez votre rythme actuel.",
+        "hausse_advice": "Augmentez légèrement vos commandes.",
+        "baisse_advice": "Limitez vos commandes pour éviter les invendus.",
+    },
+}
+
+
 class OllamaRecommender:
 
     def __init__(self):
@@ -24,15 +112,22 @@ class OllamaRecommender:
         accuracy = context.get("accuracy", 0)
         trend = context.get("trend", "stable")
         cv = context.get("cv", 0)
-        return f"""Tu es un expert en gestion de stock pour PME françaises.
+        sector = context.get("sector", "general")
+        cfg = SECTOR_CONFIG.get(sector, SECTOR_CONFIG["general"])
+        sector_label = cfg["label"]
+        sector_season = cfg.get("seasonality", "")
+        return f"""Tu es un expert en gestion de stock pour PME françaises, spécialisé {sector_label}.
 
 Produit: {product}
+Secteur: {sector_label}
 Tendance: {trend}
 Précision modèle: {accuracy:.0%}
 Coefficient de variation (variabilité): {cv:.0%}
 Alertes: {json.dumps(alerts, ensure_ascii=False)}
+Saisonnalité du secteur: {sector_season}
 
-Donne 3 recommandations concrètes et adaptées à la situation réelle.
+Donne 3 recommandations concrètes et adaptées au secteur {sector_label}.
+Utilise le vocabulaire métier approprié.
 Si la précision est faible (<50%), signale-le clairement.
 Si les données sont très variables (cv>80%), avertis le gérant.
 Format JSON: [{{"action":"...", "detail":"...", "priority":"OK|ATTENTION|CRITIQUE"}}]
@@ -53,6 +148,8 @@ Réponse JSON uniquement."""
         trend = context.get("trend", "stable")
         cv = context.get("cv", 0)
         seasonality = context.get("seasonality_context", "")
+        sector = context.get("sector", "general")
+        cfg = SECTOR_CONFIG.get(sector, SECTOR_CONFIG["general"])
         recs = []
         if accuracy < 0.40:
             recs.append({"action": "Données trop irrégulières pour une prévision fiable", "detail": f"Précision du modèle : {accuracy:.0%}. Vos données varient trop fortement — enrichissez l'historique ou vérifiez vos chiffres.", "priority": "CRITIQUE"})
@@ -63,16 +160,19 @@ Réponse JSON uniquement."""
         stockouts = [a for a in alerts if a.get("type") == "stockout"]
         surpluses = [a for a in alerts if a.get("type") == "surplus"]
         if stockouts:
-            recs.append({"action": f"Risque de rupture détecté ({len(stockouts)} période(s))", "detail": f"Première rupture prévue le {stockouts[0].get('date','?')}. Passez commande dès maintenant.", "priority": "CRITIQUE"})
+            recs.append({"action": f"Risque de rupture détecté ({len(stockouts)} période(s))", "detail": f"Première rupture prévue le {stockouts[0].get('date','?')}. {cfg['stockout_advice']}", "priority": "CRITIQUE"})
         if surpluses:
-            recs.append({"action": f"Surplus prévu ({len(surpluses)} période(s))", "detail": f"Réduisez vos commandes pour la période du {surpluses[0].get('date','?')}.", "priority": "ATTENTION"})
+            recs.append({"action": f"Surplus prévu ({len(surpluses)} période(s))", "detail": f"Période du {surpluses[0].get('date','?')}. {cfg['surplus_advice']}", "priority": "ATTENTION"})
         if trend == "hausse" and accuracy >= 0.60:
-            recs.append({"action": "Tendance à la hausse — Anticipez vos approvisionnements", "detail": "Vos ventes progressent. Augmentez légèrement vos commandes.", "priority": "OK"})
+            recs.append({"action": "Tendance à la hausse — Anticipez", "detail": cfg["hausse_advice"], "priority": "OK"})
         elif trend == "baisse" and accuracy >= 0.60:
-            recs.append({"action": "Tendance à la baisse — Réduisez vos stocks", "detail": "Vos ventes diminuent. Limitez vos commandes pour éviter les invendus.", "priority": "ATTENTION"})
+            recs.append({"action": "Tendance à la baisse — Ajustez", "detail": cfg["baisse_advice"], "priority": "ATTENTION"})
         elif accuracy >= 0.60 and not stockouts and not surpluses:
-            recs.append({"action": "Situation stable — Maintenez votre rythme actuel", "detail": "Aucune alerte détectée. Continuez sur cette lancée.", "priority": "OK"})
-        if seasonality and accuracy >= 0.55 and not any(r['priority'] == 'CRITIQUE' for r in recs):
+            recs.append({"action": "Situation stable", "detail": cfg["stable_advice"], "priority": "OK"})
+        sector_season = cfg.get("seasonality", "")
+        if sector_season and accuracy >= 0.50 and not any(r['priority'] == 'CRITIQUE' for r in recs):
+            recs.append({"action": f"Saisonnalité {cfg['label']}", "detail": sector_season, "priority": "OK"})
+        elif seasonality and accuracy >= 0.55 and not any(r['priority'] == 'CRITIQUE' for r in recs):
             recs.append({"action": seasonality, "detail": "Anticipez vos commandes en fonction de ces variations saisonnières.", "priority": "OK"})
         if not recs:
             recs.append({"action": "Données insuffisantes pour une recommandation précise", "detail": "Ajoutez plus de données historiques (minimum 20 semaines recommandées).", "priority": "ATTENTION"})
