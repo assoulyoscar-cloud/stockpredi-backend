@@ -150,6 +150,11 @@ Réponse JSON uniquement."""
         seasonality = context.get("seasonality_context", "")
         sector = context.get("sector", "general")
         cfg = SECTOR_CONFIG.get(sector, SECTOR_CONFIG["general"])
+        sp = context.get("sector_params", {})
+        perissable = sp.get("perissable", 30)
+        saisonnalite = sp.get("saisonnalite", 50)
+        marge_securite = sp.get("marge_securite", 20)
+        tolerance_rupture = sp.get("tolerance_rupture", 30)
         recs = []
         if accuracy < 0.40:
             recs.append({"action": "Données trop irrégulières pour une prévision fiable", "detail": f"Précision du modèle : {accuracy:.0%}. Vos données varient trop fortement — enrichissez l'historique ou vérifiez vos chiffres.", "priority": "CRITIQUE"})
@@ -160,9 +165,12 @@ Réponse JSON uniquement."""
         stockouts = [a for a in alerts if a.get("type") == "stockout"]
         surpluses = [a for a in alerts if a.get("type") == "surplus"]
         if stockouts:
-            recs.append({"action": f"Risque de rupture détecté ({len(stockouts)} période(s))", "detail": f"Première rupture prévue le {stockouts[0].get('date','?')}. {cfg['stockout_advice']}", "priority": "CRITIQUE"})
+            urgency = "CRITIQUE" if tolerance_rupture < 20 else "ATTENTION"
+            margin_tip = f" Prévoyez +{marge_securite}% de marge de sécurité." if marge_securite > 15 else ""
+            recs.append({"action": f"Risque de rupture détecté ({len(stockouts)} période(s))", "detail": f"Première rupture prévue le {stockouts[0].get('date','?')}. {cfg['stockout_advice']}{margin_tip}", "priority": urgency})
         if surpluses:
-            recs.append({"action": f"Surplus prévu ({len(surpluses)} période(s))", "detail": f"Période du {surpluses[0].get('date','?')}. {cfg['surplus_advice']}", "priority": "ATTENTION"})
+            severity = "CRITIQUE" if perissable > 70 else "ATTENTION"
+            recs.append({"action": f"Surplus prévu ({len(surpluses)} période(s))", "detail": f"Période du {surpluses[0].get('date','?')}. {cfg['surplus_advice']}", "priority": severity})
         if trend == "hausse" and accuracy >= 0.60:
             recs.append({"action": "Tendance à la hausse — Anticipez", "detail": cfg["hausse_advice"], "priority": "OK"})
         elif trend == "baisse" and accuracy >= 0.60:
@@ -170,8 +178,9 @@ Réponse JSON uniquement."""
         elif accuracy >= 0.60 and not stockouts and not surpluses:
             recs.append({"action": "Situation stable", "detail": cfg["stable_advice"], "priority": "OK"})
         sector_season = cfg.get("seasonality", "")
-        if sector_season and accuracy >= 0.50 and not any(r['priority'] == 'CRITIQUE' for r in recs):
-            recs.append({"action": f"Saisonnalité {cfg['label']}", "detail": sector_season, "priority": "OK"})
+        if sector_season and saisonnalite >= 40 and accuracy >= 0.50 and not any(r['priority'] == 'CRITIQUE' for r in recs):
+            priority = "ATTENTION" if saisonnalite > 75 else "OK"
+            recs.append({"action": f"Saisonnalité {cfg['label']}", "detail": sector_season, "priority": priority})
         elif seasonality and accuracy >= 0.55 and not any(r['priority'] == 'CRITIQUE' for r in recs):
             recs.append({"action": seasonality, "detail": "Anticipez vos commandes en fonction de ces variations saisonnières.", "priority": "OK"})
         if not recs:
