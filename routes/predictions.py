@@ -47,6 +47,7 @@ def recommendations():
         raw = body.get("data", [])
         product_name = body.get("product_name", "Mon produit")
         periods = int(body.get("periods", 30))
+        sector = body.get("sector", "general")
         df = parse_data(raw)
         model = StockForecast(df)
         forecast_result = model.fit_and_predict(periods=periods)
@@ -64,6 +65,7 @@ def recommendations():
             "cv": cv,
             "data_points": len(df),
             "seasonality_context": forecast_result.get("seasonality_context", ""),
+            "sector": sector,
         }
         rec_result = recommender.recommend(context)
         if accuracy_score < 0.40:
