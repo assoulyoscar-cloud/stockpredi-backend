@@ -44,11 +44,73 @@ def update_profile():
 @user_bp.route("/predictions", methods=["GET"])
 @auth_required
 def get_user_predictions():
-    """GET /api/user/predictions — historique previsions user."""
+    
+@user_bp.route("/export", methods=["GET"])
+@auth_required
+def export_data():
+    """GET /api/user/export — RGPD Article 20: Droit à la portabilité.
+    Exporte TOUTES les données utilisateur en JSON.
+    """
     supabase = get_client()
-    limit = min(int(request.args.get("limit", 20)), 100)
+    user_id = request.user_id
     try:
-        res = supabase.table("predictions")             .select("*")             .eq("user_id", request.user_id)             .order("created_at", desc=True)             .limit(limit)             .execute()
-        return jsonify({"predictions": res.data, "count": len(res.data)}), 200
+        # Récupérer le profil
+        user_res = supabase.table("users").select("*").eq("id", user_id).single().execute()
+        user_data = user_res.data if user_res.data else {}
+
+        # Récupérer toutes les prédictions
+        pred_res = supabase.table("predictions").select("*").eq("user_id", user_id).execute()
+        predictions = pred_res.data if pred_res.data else []
+
+        # Récupérer tous les scénarios
+        scen_res = supabase.table("saved_scenarios").select("*").eq("user_id", user_id).execute()
+        scenarios = scen_res.data if scen_res.data else []
+
+        # Construire l'export
+        export_data = {
+            "export_date": __import__('datetime').datetime.utcnow().isoformat(),
+            "user_profile": user_data,
+            "predictions": predictions,
+            "scenarios": scenarios,
+            "note": "Cet export contient TOUTES vos données personnelles dans StockPredi"
+        }
+
+        return jsonify(export_data), 200
     except Exception as e:
-        return jsonify({"error": "Historique introuvable", "detail": str(e)}), 500
+        return jsonify({"error": "Export impossible", "detail": str(e)}), 500
+
+
+@user_bp.route("/delete-account", methods=["DELETE"])
+@auth_required
+def delete_account():
+    """DELETE /api/user/delete-account — RGPD Article 17: Droit à l'oubli.
+    Supprime TOUTES les données utilisateur.
+    """
+    supabase = get_client()
+    user_id = request.user_id
+    try:
+        # Log d'audit (optionnel — pour traçabilité)
+        import datetime
+        log_entry = {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "action": "account_deletion",
+            "user_id": user_id,
+            "status": "initiated"
+        }
+        # TODO: Envoyer ce log à un système d'audit
+
+        # Supprimer toutes les prédictions
+        supabase.table("predictions").delete().eq("user_id", user_id).execute()
+
+        # Supprimer tous les scénarios sauvegardés
+        supabase.table("saved_scenarios").delete().eq("user_id", user_id).execute()
+
+        # Supprimer le profil utilisateur
+        supabase.table("users").delete().eq("id", user_id).execute()
+
+        return jsonify({
+            "success": True,
+            "message": "Compte et toutes les données supprimés définitivement"
+        }), 200
+    except Exception as e:
+        return jsonify({"error": "Suppression impossible", "detail": str(e)}), 500
