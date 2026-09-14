@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+ï»¿from flask import Blueprint, request, jsonify
 from middleware.auth_middleware import auth_required
 from models.user_store import ensure_user_row
 from supabase import create_client
@@ -14,7 +14,7 @@ def get_client():
 @user_bp.route("/profile", methods=["GET"])
 @auth_required
 def get_profile():
-    """GET /api/user/profile — profil utilisateur connecte."""
+    """GET /api/user/profile â€” profil utilisateur connecte."""
     supabase = get_client()
     try:
         ensure_user_row(supabase, request.user_id, request.user_email)
@@ -27,7 +27,7 @@ def get_profile():
 @user_bp.route("/profile", methods=["PATCH"])
 @auth_required
 def update_profile():
-    """PATCH /api/user/profile — mise a jour profil."""
+    """PATCH /api/user/profile â€” mise a jour profil."""
     supabase = get_client()
     body = request.get_json(silent=True) or {}
     allowed = {"company_name", "plan", "preferences"}
@@ -44,7 +44,7 @@ def update_profile():
 @user_bp.route("/predictions", methods=["GET"])
 @auth_required
 def get_user_predictions():
-    """GET /api/user/predictions — historique previsions user."""
+    """GET /api/user/predictions â€” historique previsions user."""
     supabase = get_client()
     limit = min(int(request.args.get("limit", 20)), 100)
     try:
@@ -57,21 +57,21 @@ def get_user_predictions():
 @user_bp.route("/export", methods=["GET"])
 @auth_required
 def export_data():
-    """GET /api/user/export — RGPD Article 20: Droit à la portabilité.
-    Exporte TOUTES les données utilisateur en JSON.
+    """GET /api/user/export â€” RGPD Article 20: Droit Ã  la portabilitÃ©.
+    Exporte TOUTES les donnÃ©es utilisateur en JSON.
     """
     supabase = get_client()
     user_id = request.user_id
     try:
-        # Récupérer le profil
+        # RÃ©cupÃ©rer le profil
         user_res = supabase.table("users").select("*").eq("id", user_id).single().execute()
         user_data = user_res.data if user_res.data else {}
 
-        # Récupérer toutes les prédictions
+        # RÃ©cupÃ©rer toutes les prÃ©dictions
         pred_res = supabase.table("predictions").select("*").eq("user_id", user_id).execute()
         predictions = pred_res.data if pred_res.data else []
 
-        # Récupérer tous les scénarios
+        # RÃ©cupÃ©rer tous les scÃ©narios
         scen_res = supabase.table("saved_scenarios").select("*").eq("user_id", user_id).execute()
         scenarios = scen_res.data if scen_res.data else []
 
@@ -81,7 +81,7 @@ def export_data():
             "user_profile": user_data,
             "predictions": predictions,
             "scenarios": scenarios,
-            "note": "Cet export contient TOUTES vos données personnelles dans StockPredi"
+            "note": "Cet export contient TOUTES vos donnÃ©es personnelles dans StockPredi"
         }
 
         return jsonify(export_data), 200
@@ -92,13 +92,13 @@ def export_data():
 @user_bp.route("/delete-account", methods=["DELETE"])
 @auth_required
 def delete_account():
-    """DELETE /api/user/delete-account — RGPD Article 17: Droit à l'oubli.
-    Supprime TOUTES les données utilisateur.
+    """DELETE /api/user/delete-account â€” RGPD Article 17: Droit Ã  l'oubli.
+    Supprime TOUTES les donnÃ©es utilisateur.
     """
     supabase = get_client()
     user_id = request.user_id
     try:
-        # Log d'audit (optionnel — pour traçabilité)
+        # Log d'audit (optionnel â€” pour traÃ§abilitÃ©)
         import datetime
         log_entry = {
             "timestamp": datetime.datetime.utcnow().isoformat(),
@@ -106,12 +106,12 @@ def delete_account():
             "user_id": user_id,
             "status": "initiated"
         }
-        # TODO: Envoyer ce log à un système d'audit
+        # TODO: Envoyer ce log Ã  un systÃ¨me d'audit
 
-        # Supprimer toutes les prédictions
+        # Supprimer toutes les prÃ©dictions
         supabase.table("predictions").delete().eq("user_id", user_id).execute()
 
-        # Supprimer tous les scénarios sauvegardés
+        # Supprimer tous les scÃ©narios sauvegardÃ©s
         supabase.table("saved_scenarios").delete().eq("user_id", user_id).execute()
 
         # Supprimer le profil utilisateur
@@ -119,7 +119,7 @@ def delete_account():
 
         return jsonify({
             "success": True,
-            "message": "Compte et toutes les données supprimés définitivement"
+            "message": "Compte et toutes les donnÃ©es supprimÃ©s dÃ©finitivement"
         }), 200
     except Exception as e:
         return jsonify({"error": "Suppression impossible", "detail": str(e)}), 500
