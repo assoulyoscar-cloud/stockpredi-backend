@@ -123,3 +123,4 @@ def delete_account():
         }), 200
     except Exception as e:
         return jsonify({"error": "Suppression impossible", "detail": str(e)}), 500
+
