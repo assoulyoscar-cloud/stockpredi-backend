@@ -125,3 +125,4 @@ def delete_account():
         return jsonify({"error": "Suppression impossible", "detail": str(e)}), 500
 
 
+
