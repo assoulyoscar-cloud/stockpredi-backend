@@ -56,6 +56,74 @@ def recommendations():
     """POST /api/predictions/recommendations
     Body: { "data": [...], "product_name": "Widget A", "periods": 30 }
     """
+    try:
+        body = request.get_json(silent=True) or {}
+        raw = body.get("data", [])
+        product_name = body.get("product_name", "Produit")
+        periods = int(body.get("periods", 30))
+        periods = max(7, min(periods, 365))
+
+        try:
+            df = parse_data(raw)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+        # 1. Forecast
+        forecaster = StockForecast(df)
+        forecast_result = forecaster.fit_and_predict(periods=periods)
+        alerts = detect_alerts(forecast_result["predictions"])
+        preds = forecast_result["predictions"]
+
+        # 2. Context pour Ollama
+        avg_forecast = float(np.mean([p["forecast"] for p in preds])) if preds else 0
+        trend = compute_trend(preds)
+        context = {
+            "product_name": product_name,
+            "alerts": alerts,
+            "accuracy_score": forecast_result.get("accuracy_score", 0),
+            "avg_forecast": avg_forecast,
+            "trend": trend
+        }
+
+        # 3. Recommandations IA (with better error handling)
+        try:
+            recommender = OllamaRecommender()
+            recs = recommender.get_recommendations(context)
+        except Exception as e:
+            # Fallback if recommendations fail
+            recs = {
+                "recommendations": [{
+                    "priority": "OK",
+                    "action": "Consulter l'historique",
+                    "detail": "Les recommandations IA sont temporairement indisponibles"
+                }],
+                "summary": "Analyse basique activee",
+                "source": "fallback"
+            }
+
+        return jsonify({
+            "forecast": forecast_result,
+            "alerts": alerts,
+            "recommendations": recs.get("recommendations", []),
+            "summary": recs.get("summary", ""),
+            "ai_source": recs.get("source", "rules"),
+            "trend": trend,
+            "product_name": product_name
+        }), 200
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        return jsonify({
+            "error": "Erreur recommandations",
+            "detail": str(e),
+            "trace": tb
+        }), 500
+
+@auth_required
+def recommendations():
+    """POST /api/predictions/recommendations
+    Body: { "data": [...], "product_name": "Widget A", "periods": 30 }
+    """
     body = request.get_json(silent=True) or {}
     raw = body.get("data", [])
     product_name = body.get("product_name", "Produit")
