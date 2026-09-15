@@ -1,13 +1,26 @@
-venv/
+﻿# Temporary build/debug files
+Claude outputs/
+*.bat
+*.patch
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env variables (NEVER commit!)
 .env
 .env.local
-*.egg-info/
-dist/
-build/
-.pytest_cache/
-uploads/
-*.csv
-logs/
+.env.*.local
