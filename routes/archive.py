@@ -22,7 +22,7 @@ def require_api_key(f):
     return decorated_function
 
 
-@archive_bp.route('/api/archive/signup', methods=['POST'])
+@archive_bp.route('/api/archive/signup', methods=['POST', 'OPTIONS'])
 @require_api_key
 def archive_new_signup():
     """

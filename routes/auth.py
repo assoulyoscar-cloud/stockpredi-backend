@@ -13,7 +13,7 @@ def get_admin_client():
     return create_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_KEY)
 
 
-@auth_bp.route("/signup", methods=["POST"])
+@auth_bp.route("/signup", methods=["POST", "OPTIONS"])
 def signup():
     # Rate limit: 3 signups par heure par IP
     limiter = current_app.limiter
@@ -41,7 +41,7 @@ def signup():
         return jsonify({"error": "Inscription impossible", "detail": str(e)}), 400
 
 
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.route("/login", methods=["POST", "OPTIONS"])
 def login():
     # Rate limit: 5 tentatives par minute par IP
     limiter = current_app.limiter
@@ -69,7 +69,7 @@ def login():
         return jsonify({"error": "Identifiants invalides"}), 401
 
 
-@auth_bp.route("/logout", methods=["POST"])
+@auth_bp.route("/logout", methods=["POST", "OPTIONS"])
 def logout():
     try:
         auth_header = request.headers.get("Authorization", "")
@@ -82,7 +82,7 @@ def logout():
     return jsonify({"message": "Deconnecte"}), 200
 
 
-@auth_bp.route("/refresh", methods=["POST"])
+@auth_bp.route("/refresh", methods=["POST", "OPTIONS"])
 def refresh():
     body = request.get_json(silent=True) or {}
     refresh_token = body.get("refresh_token", "")

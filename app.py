@@ -1,36 +1,24 @@
-﻿from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from config import Config
 from routes.auth import auth_bp
-# from routes.rgpd import rgpd_bp
-# from routes.predictions import predictions_bp
+from routes.predictions import predictions_bp
 from routes.user import user_bp
 from routes.stripe_routes import stripe_bp
+from routes.rgpd import rgpd_bp
+from routes.archive import archive_bp
 
 def create_app():
     app = Flask(__name__)
 
-    # CORS â€” frontend uniquement
-    CORS(    CORS(app, origins=[Config.FRONTEND_URL, "http://localhost:3000"],
+    # CORS — frontend uniquement
+    CORS(app, origins=[Config.FRONTEND_URL, "http://localhost:3000"],
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization"],
-         methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
-
-    # Preflight OPTIONS handler — reçoit toutes les OPTIONS requests avant les routes
-    @app.before_request
-    def handle_preflight():
-        if request.method == "OPTIONS":
-            response = jsonify({"status": "ok"})
-            response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
-            response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
-            response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-            response.headers.add("Access-Control-Allow-Credentials", "true")
-            return response, 200
-
-    # Rate limiting global
-    limiter = Limiter()
+         methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+         automatic_options=True)
 
     # Rate limiting global
     limiter = Limiter(
@@ -46,10 +34,24 @@ def create_app():
 
     # Blueprints
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
-    # app.register_blueprint(predictions_bp, url_prefix="/api/predictions")
+    app.register_blueprint(predictions_bp, url_prefix="/api/predictions")
     app.register_blueprint(user_bp, url_prefix="/api/user")
     app.register_blueprint(stripe_bp, url_prefix="/api/stripe")
-    # app.register_blueprint(rgpd_bp, url_prefix="/api/rgpd")
+    app.register_blueprint(rgpd_bp, url_prefix="/api/rgpd")
+    app.register_blueprint(archive_bp)
+
+    # Global preflight handler for all routes
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = make_response()
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.status_code = 200
+            return response
+
     @app.route("/health")
     def health():
         return jsonify({"status": "ok", "service": "stockpredi-backend"}), 200
@@ -76,5 +78,3 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=(Config.FLASK_ENV == "development"), host="0.0.0.0", port=5000)
-
-
