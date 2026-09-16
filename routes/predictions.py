@@ -118,5 +118,3 @@ def recommendations():
             "detail": str(e),
             "trace": tb
         }), 500
-
-@auth_required
