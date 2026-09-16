@@ -78,3 +78,4 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=(Config.FLASK_ENV == "development"), host="0.0.0.0", port=5000)
+# Build trigger: Wed Sep 16 17:14:37 UTC 2026
