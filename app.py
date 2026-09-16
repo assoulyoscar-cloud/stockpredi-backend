@@ -8,6 +8,8 @@ from routes.predictions import predictions_bp
 from routes.user import user_bp
 from routes.stripe_routes import stripe_bp
 from routes.rgpd import rgpd_bp
+from routes.export_routes import export_bp
+from routes.occupations_routes import occupations_bp
 from routes.archive import archive_bp
 
 def create_app():
@@ -37,6 +39,8 @@ def create_app():
     app.register_blueprint(predictions_bp, url_prefix="/api/predictions")
     app.register_blueprint(user_bp, url_prefix="/api/user")
     app.register_blueprint(stripe_bp, url_prefix="/api/stripe")
+    app.register_blueprint(export_bp)
+    app.register_blueprint(occupations_bp)
     app.register_blueprint(rgpd_bp, url_prefix="/api/rgpd")
     app.register_blueprint(archive_bp)
 
