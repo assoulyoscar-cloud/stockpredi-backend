@@ -199,21 +199,22 @@ Réponse JSON uniquement."""
         return {"recommendations": recs, "ai_source": "rules"}
 
 
-def compute_trend(df):
-    if df is None or len(df) < 4:
+def compute_trend(predictions: list) -> str:
+    """Detecte la tendance generale sur les previsions."""
+    if predictions is None or len(predictions) < 7:
         return "stable"
-    y = df["y"].values
-    x = np.arange(len(y))
-    slope = np.polyfit(x, y, 1)[0]
-    mean_y = y.mean()
-    if mean_y == 0:
+    values = [p["forecast"] for p in predictions]
+    first_week = sum(values[:7]) / 7
+    last_week = sum(values[-7:]) / 7
+    if first_week == 0:
         return "stable"
-    relative_slope = slope / mean_y
-    if relative_slope > 0.015:
+    delta = (last_week - first_week) / first_week
+    if delta > 0.15:
         return "hausse"
-    elif relative_slope < -0.015:
+    if delta < -0.15:
         return "baisse"
     return "stable"
+
 
 
 def compute_cv(df):
