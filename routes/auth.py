@@ -13,7 +13,7 @@ def get_admin_client():
     return create_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_KEY)
 
 
-@auth_bp.route("/signup", methods=["POST", "OPTIONS"])
+@auth_bp.route("/signup", methods=["POST"])
 def signup():
     # Rate limit: 3 signups par heure par IP
     limiter = current_app.limiter
@@ -41,7 +41,7 @@ def signup():
         return jsonify({"error": "Inscription impossible", "detail": str(e)}), 400
 
 
-@auth_bp.route("/login", methods=["POST", "OPTIONS"])
+@auth_bp.route("/login", methods=["POST"])
 def login():
     # Rate limit: 5 tentatives par minute par IP
     limiter = current_app.limiter
@@ -69,7 +69,7 @@ def login():
         return jsonify({"error": "Identifiants invalides"}), 401
 
 
-@auth_bp.route("/logout", methods=["POST", "OPTIONS"])
+@auth_bp.route("/logout", methods=["POST"])
 def logout():
     try:
         auth_header = request.headers.get("Authorization", "")
@@ -82,7 +82,7 @@ def logout():
     return jsonify({"message": "Deconnecte"}), 200
 
 
-@auth_bp.route("/refresh", methods=["POST", "OPTIONS"])
+@auth_bp.route("/refresh", methods=["POST"])
 def refresh():
     body = request.get_json(silent=True) or {}
     refresh_token = body.get("refresh_token", "")
@@ -97,3 +97,99 @@ def refresh():
         }), 200
     except Exception as e:
         return jsonify({"error": "Token invalide", "detail": str(e)}), 401
+
+
+@auth_bp.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    """
+    Sends a password reset email to the user.
+    
+    Request body:
+    {
+        "email": "user@example.com"
+    }
+    
+    Response:
+    {
+        "message": "Email de reinitialisation envoye",
+        "email": "user@example.com"
+    }
+    """
+    # Rate limit: 2 reset attempts par 15 minutes par IP
+    limiter = current_app.limiter
+    limiter.limit("2 per 15 minutes")(lambda: None)()
+
+    body = request.get_json(silent=True) or {}
+    email = body.get("email", "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "Email requis"}), 400
+
+    try:
+        supabase = get_admin_client()
+        # Use admin client to reset password
+        # Supabase will send an email with reset link
+        response = supabase.auth.admin_reset_password_email(email)
+        
+        return jsonify({
+            "message": "Email de reinitialisation envoye",
+            "email": email
+        }), 200
+    except Exception as e:
+        # Don't reveal if email exists or not (security)
+        return jsonify({
+            "message": "Si cet email existe, vous recevrez un lien de reinitialisation"
+        }), 200
+
+
+@auth_bp.route("/reset-password", methods=["POST"])
+def reset_password():
+    """
+    Resets the user's password using the reset token from email.
+    
+    The flow:
+    1. User receives reset email with token in URL
+    2. Frontend captures token from URL parameter
+    3. Frontend calls this endpoint with new password
+    
+    Request body:
+    {
+        "access_token": "token_from_email_link",
+        "new_password": "newpassword123"
+    }
+    
+    Response:
+    {
+        "message": "Mot de passe reinitialise avec succes"
+    }
+    """
+    body = request.get_json(silent=True) or {}
+    access_token = body.get("access_token", "").strip()
+    new_password = body.get("new_password", "")
+
+    if not access_token or not new_password:
+        return jsonify({"error": "Token et nouveau mot de passe requis"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "Mot de passe minimum 8 caracteres"}), 400
+
+    try:
+        supabase = get_client()
+        
+        # Set the session with the reset token
+        # This makes the user "logged in" for the password update
+        response = supabase.auth.set_session(access_token, None)
+        
+        # Update password
+        updated_user = supabase.auth.update_user(
+            {"password": new_password}
+        )
+        
+        return jsonify({
+            "message": "Mot de passe reinitialise avec succes"
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "error": "Impossible de reinitialiser le mot de passe",
+            "detail": str(e)
+        }), 400
