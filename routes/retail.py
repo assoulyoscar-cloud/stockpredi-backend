@@ -235,17 +235,6 @@ def health():
 
 # ===== DLUO Tracking Routes (P3) =====
 
-# ===== DLUO Tracking Routes (Phase 5 P3) =====
-def auth_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token or not token.startswith('Bearer '):
-            return jsonify({'error': 'Missing or invalid authorization'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
-
-
 @retail_bp.route('/import-dluo', methods=['POST'])
 @auth_required
 def import_dluo_csv():
