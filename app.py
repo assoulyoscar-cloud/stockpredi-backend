@@ -11,6 +11,7 @@ from routes.rgpd import rgpd_bp
 from routes.export_routes import export_bp
 from routes.occupations_routes import occupations_bp
 from routes.archive import archive_bp
+from routes.retail import retail_bp
 
 def create_app():
     app = Flask(__name__)
@@ -43,6 +44,7 @@ def create_app():
     app.register_blueprint(occupations_bp)
     app.register_blueprint(rgpd_bp, url_prefix="/api/rgpd")
     app.register_blueprint(archive_bp)
+    app.register_blueprint(retail_bp, url_prefix="/api/sectors/retail")
 
     # Global preflight handler for all routes
     @app.before_request
