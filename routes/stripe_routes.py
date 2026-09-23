@@ -155,13 +155,20 @@ def cancel_subscription():
 @stripe_bp.route("/status", methods=["GET"])
 @auth_required
 def subscription_status():
+    """Retourne le statut abonnement de l'utilisateur."""
     supabase = get_client()
     try:
         ensure_user_row(supabase, request.user_id, request.user_email)
         res = supabase.table("users") \
             .select("plan, stripe_customer_id, stripe_subscription_id") \
             .eq("id", request.user_id).single().execute()
-        return jsonify(res.data), 200
+        
+        # FIX: Si plan est NULL/vide, défaut à "trial"
+        data = res.data or {}
+        if not data.get("plan"):
+            data["plan"] = "trial"
+        
+        return jsonify(data), 200
     except Exception as e:
         return jsonify({"error": "Statut introuvable", "detail": str(e)}), 404
 def _build_urssaf_pdf(paid_dt, ca_mois, ca_annee, nb_mois, nb_annee,
