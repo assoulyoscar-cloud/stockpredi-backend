@@ -8,7 +8,7 @@ from routes.rgpd import rgpd_bp
 from routes.predictions import predictions_bp
 from routes.user import user_bp
 from routes.stripe_routes import stripe_bp
-from routes.sector_recommendations import sector_bp
+   # from routes.sector_recommendations import sector_bp
 from routes.contact import contact_bp
 
 def create_app():
@@ -38,7 +38,7 @@ def create_app():
     app.register_blueprint(user_bp, url_prefix="/api/user")
     app.register_blueprint(stripe_bp, url_prefix="/api/stripe")
     app.register_blueprint(rgpd_bp, url_prefix="/api/rgpd")
-    app.register_blueprint(sector_bp, url_prefix="/api/predictions")
+    # app.register_blueprint(sector_bp, url_prefix="...")
     app.register_blueprint(contact_bp, url_prefix="/api/contact")
     
     @app.route("/health")
@@ -72,7 +72,32 @@ def create_app():
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
         return response
+# Scheduler pour exporter stats vers Google Drive
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from tasks.export_to_drive import export_stats_to_drive
+    import atexit
+    
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=export_stats_to_drive,
+        trigger="cron",
+        day_of_week="6",
+        hour=22,
+        minute=0,
+        id='export_stats_weekly',
+        name='Export stats to Google Drive weekly',
+        replace_existing=True
+    )
+    scheduler.start()
+    print("✅ APScheduler started successfully")
+    
+    # Arrête le scheduler à l'arrêt de l'app
+    atexit.register(lambda: scheduler.shutdown())
+except Exception as e:
+    print(f"❌ Scheduler error: {e}")
 
+return app
     return app
 
 app = create_app()
