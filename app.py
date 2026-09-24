@@ -20,6 +20,15 @@ def create_app():
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
 
+    # Preflight CORS : repondre 200 avant toute vue / auth_required.
+    # Les routes declarent methods=[..., "OPTIONS"], donc sans ce hook la vue
+    # s'executait sur le preflight -> 401 "Token manquant" -> "Failed to fetch".
+    # Flask-CORS ajoute les en-tetes Access-Control-* dans after_request.
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            return app.make_default_options_response()
+
     # Rate limiting global
     limiter = Limiter(
         key_func=get_remote_address,
