@@ -15,8 +15,12 @@ from routes.admin import admin_bp
 def create_app():
     app = Flask(__name__)
 
-    # CORS — frontend uniquement
-    CORS(app, origins=[Config.FRONTEND_URL, "http://localhost:3000"],
+    # CORS — frontend prod + previews Vercel du projet + dev local.
+    # Regex ancree (Flask-CORS fait re.match) : stockpredi-<hash>-<scope>.vercel.app
+    # et stockpredi-git-<branche>-<scope>.vercel.app, pas n'importe quel *.vercel.app.
+    CORS(app, origins=[Config.FRONTEND_URL, "https://stockpredi.vercel.app",
+                       r"^https://stockpredi-[a-z0-9-]+\.vercel\.app$",
+                       "http://localhost:3000"],
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
