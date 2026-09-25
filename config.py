@@ -24,6 +24,10 @@ class Config:
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
     STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 
+    # Emails (Resend) — lus par routes/rgpd.py ; absents -> emails ignores
+    RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+    OWNER_EMAIL = os.getenv("OWNER_EMAIL", "assouly.oscar@gmail.com")
+
     # CORS
     FRONTEND_URL = os.getenv("FRONTEND_URL", "https://stockpredi.vercel.app")
 
