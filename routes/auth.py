@@ -126,17 +126,20 @@ def forgot_password():
         return jsonify({"error": "Email requis"}), 400
 
     try:
-        supabase = get_admin_client()
-        # Use admin client to reset password
-        # Supabase will send an email with reset link
-        response = supabase.auth.admin_reset_password_email(email)
+        supabase = get_client()
+        # admin_reset_password_email n'existe pas dans supabase-py : l'AttributeError
+        # etait avalee par le except -> 200 "lien envoye" sans aucun email.
+        supabase.auth.reset_password_email(
+            email, {"redirect_to": f"{Config.FRONTEND_URL}/reset-password"}
+        )
         
         return jsonify({
             "message": "Email de reinitialisation envoye",
             "email": email
         }), 200
     except Exception as e:
-        # Don't reveal if email exists or not (security)
+        # Don't reveal if email exists or not (security) -- mais loguer pour Render
+        print(f"forgot-password: envoi Supabase echoue: {type(e).__name__}: {e}")
         return jsonify({
             "message": "Si cet email existe, vous recevrez un lien de reinitialisation"
         }), 200
