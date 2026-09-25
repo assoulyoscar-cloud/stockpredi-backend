@@ -10,6 +10,7 @@ from routes.user import user_bp
 from routes.stripe_routes import stripe_bp
 from routes.contact import contact_bp
 from routes.stats import stats_bp
+from routes.admin import admin_bp
 
 def create_app():
     app = Flask(__name__)
@@ -49,6 +50,7 @@ def create_app():
     app.register_blueprint(rgpd_bp, url_prefix="/api/rgpd")
     app.register_blueprint(contact_bp, url_prefix="/api/contact")
     app.register_blueprint(stats_bp, url_prefix="/api/stats")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
     
     @app.route("/health")
     def health():
