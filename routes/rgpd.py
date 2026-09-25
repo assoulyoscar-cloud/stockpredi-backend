@@ -4,7 +4,7 @@ Handles automated data exports, email delivery, and audit logging
 Format: SP-Data-Export-YYYY-MM-DD-HHmmss-{USER_ID}.pdf
 """
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, Response
 from middleware.auth_middleware import auth_required
 from supabase import create_client
 from config import Config
@@ -260,8 +260,9 @@ def _log_rgpd_audit(user_id, action, details, status="success"):
 @auth_required
 def export_user_data():
     """
-    POST /api/rgpd/export — Generate and email RGPD data export
-    Requires authentication. Generates PDF, sends via email, logs audit trail.
+    POST /api/rgpd/export — Generate RGPD data export
+    Requires authentication. Returns the PDF (application/pdf) for direct
+    download, emails a copy if Resend is configured, logs audit trail.
     """
     try:
         user_id = request.user_id
@@ -270,8 +271,9 @@ def export_user_data():
         supabase = get_client()
 
         # 1. Fetch user profile
-        user_res = supabase.table("users").select("*").eq("id", user_id).single().execute()
-        user_data = user_res.data or {}
+        # limit(1) plutot que single() : single() leve une erreur si la ligne users n'existe pas
+        user_res = supabase.table("users").select("*").eq("id", user_id).limit(1).execute()
+        user_data = (user_res.data or [{}])[0]
 
         # 2. Fetch predictions history
         pred_res = supabase.table("predictions").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
@@ -305,13 +307,18 @@ def export_user_data():
             }
         )
 
-        return jsonify({
-            "message": "Export RGPD générée avec succès",
-            "export_id": export_id,
-            "email_sent": email_result is not None,
-            "pdf_size_bytes": len(pdf_bytes),
-            "predictions_count": len(predictions_data)
-        }), 200
+        # Le frontend fait res.blob() : renvoyer le PDF lui-meme, pas du JSON
+        filename = f"StockPredi_Export_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+        return Response(
+            pdf_bytes,
+            status=200,
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Export-Id": export_id,
+                "X-Email-Sent": "true" if email_result is not None else "false",
+            },
+        )
 
     except Exception as e:
         _log_rgpd_audit(
