@@ -108,11 +108,12 @@ def recommendations():
                 recs["summary"] = f"{len(alerts)} alerte(s) detectee(s). Tendance {trend}. Precision modele : {accuracy:.0%}."
         except Exception as e:
             # Fallback if recommendations fail
+            print(f"recommendations: moteur en echec: {type(e).__name__}: {e}")
             recs = {
                 "recommendations": [{
                     "priority": "OK",
                     "action": "Consulter l'historique",
-                    "detail": "Les recommandations IA sont temporairement indisponibles"
+                    "detail": "Recommandations générées par le moteur StockPredi"
                 }],
                 "summary": "Analyse basique activee",
                 "source": "fallback"
@@ -128,10 +129,10 @@ def recommendations():
             "product_name": product_name
         }), 200
     except Exception as e:
+        # Trace dans les logs Render, pas dans la reponse envoyee au navigateur
         import traceback
-        tb = traceback.format_exc()
+        traceback.print_exc()
         return jsonify({
             "error": "Erreur recommandations",
-            "detail": str(e),
-            "trace": tb
+            "detail": str(e)
         }), 500

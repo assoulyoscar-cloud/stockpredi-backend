@@ -92,6 +92,14 @@ SECTOR_CONFIG = {
 }
 
 
+def _pct(value, default):
+    """Curseur 0-100 envoye par le Dashboard (nombre ou chaine) -> float borne."""
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return float(default)
+
+
 class OllamaRecommender:
 
     def __init__(self):
@@ -140,7 +148,22 @@ Réponse JSON uniquement."""
         r.raise_for_status()
         raw = r.json().get("response", "[]")
         data = json.loads(raw)
-        return data if isinstance(data, list) else []
+        # format=json renvoie souvent un objet {"recommendations": [...]}
+        if isinstance(data, dict):
+            data = data.get("recommendations") or data.get("recommandations") or []
+        if not isinstance(data, list):
+            return []
+        # Le frontend affiche action/detail tels quels : uniquement des chaines
+        recs = []
+        for r in data:
+            if isinstance(r, dict) and r.get("action"):
+                priority = str(r.get("priority", "OK")).upper()
+                recs.append({
+                    "action": str(r["action"]),
+                    "detail": str(r.get("detail", "")),
+                    "priority": priority if priority in ("OK", "ATTENTION", "CRITIQUE") else "OK",
+                })
+        return recs
 
     def _smart_fallback(self, context):
         alerts = context.get("alerts", [])
@@ -150,11 +173,11 @@ Réponse JSON uniquement."""
         seasonality = context.get("seasonality_context", "")
         sector = context.get("sector", "general")
         cfg = SECTOR_CONFIG.get(sector, SECTOR_CONFIG["general"])
-        sp = context.get("sector_params", {})
-        perissable = sp.get("perissable", 30)
-        saisonnalite = sp.get("saisonnalite", 50)
-        marge_securite = sp.get("marge_securite", 20)
-        tolerance_rupture = sp.get("tolerance_rupture", 30)
+        sp = context.get("sector_params") or {}
+        perissable = _pct(sp.get("perissable"), 30)
+        saisonnalite = _pct(sp.get("saisonnalite"), 50)
+        marge_securite = _pct(sp.get("marge_securite"), 20)
+        tolerance_rupture = _pct(sp.get("tolerance_rupture"), 30)
         recs = []
         if accuracy < 0.40:
             recs.append({"action": "Données trop irrégulières pour une prévision fiable", "detail": f"Précision du modèle : {accuracy:.0%}. Vos données varient trop fortement — enrichissez l'historique ou vérifiez vos chiffres.", "priority": "CRITIQUE"})
