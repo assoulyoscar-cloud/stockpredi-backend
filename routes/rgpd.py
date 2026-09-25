@@ -392,8 +392,10 @@ def delete_user_data():
         pred_delete = supabase.table("predictions").delete().eq("user_id", user_id).execute()
         deleted_count = len(pred_delete.data) if pred_delete.data else 0
 
-        # 3. Delete user profile (cascade deletes auth user)
+        # 3. Delete user profile, puis le compte Supabase Auth (pas de cascade
+        # public.users -> auth.users : sans ca l'email pouvait encore se connecter)
         supabase.table("users").delete().eq("id", user_id).execute()
+        supabase.auth.admin.delete_user(user_id)
 
         # 4. Send confirmation email
         if Config.RESEND_API_KEY:
