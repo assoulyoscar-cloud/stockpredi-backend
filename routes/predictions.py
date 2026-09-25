@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from middleware.auth_middleware import auth_required
 from models.forecast import StockForecast, detect_alerts
-from models.recommendations import OllamaRecommender, compute_trend
+from models.recommendations import OllamaRecommender, compute_trend, compute_cv
 
 predictions_bp = Blueprint("predictions", __name__)
 
@@ -60,6 +60,10 @@ def recommendations():
         body = request.get_json(silent=True) or {}
         raw = body.get("data", [])
         product_name = body.get("product_name", "Produit")
+        sector = body.get("sector") or "general"
+        sector_params = body.get("sector_params") or {}
+        if not isinstance(sector_params, dict):
+            sector_params = {}
         periods = int(body.get("periods", 30))
         periods = max(7, min(periods, 365))
 
@@ -74,21 +78,34 @@ def recommendations():
         alerts = detect_alerts(forecast_result["predictions"])
         preds = forecast_result["predictions"]
 
-        # 2. Context pour Ollama
+        # 2. Context pour le moteur (cles lues par OllamaRecommender)
+        accuracy = forecast_result.get("accuracy_score", 0) or 0
         avg_forecast = float(np.mean([p["forecast"] for p in preds])) if preds else 0
         trend = compute_trend(preds)
         context = {
             "product_name": product_name,
             "alerts": alerts,
-            "accuracy_score": forecast_result.get("accuracy_score", 0),
+            "accuracy": accuracy,
             "avg_forecast": avg_forecast,
-            "trend": trend
+            "trend": trend,
+            "cv": compute_cv(df),
+            "seasonality_context": forecast_result.get("seasonality_context", ""),
+            "sector": sector,
+            "sector_params": sector_params,
+            "data_points": len(df),
         }
 
         # 3. Recommandations IA (with better error handling)
         try:
             recommender = OllamaRecommender()
-            recs = recommender.get_recommendations(context)
+            # recommend() : get_recommendations() n'existe pas -> le fallback s'affichait toujours
+            recs = recommender.recommend(context)
+            if accuracy < 0.40:
+                recs["summary"] = f"Donnees tres irregulieres — precision {accuracy:.0%}. Les previsions sont peu fiables. Enrichissez votre historique."
+            elif accuracy < 0.60:
+                recs["summary"] = f"Precision moderee ({accuracy:.0%}). {len(alerts)} alerte(s). Tendance : {trend}. A confirmer avec plus de donnees."
+            else:
+                recs["summary"] = f"{len(alerts)} alerte(s) detectee(s). Tendance {trend}. Precision modele : {accuracy:.0%}."
         except Exception as e:
             # Fallback if recommendations fail
             recs = {
@@ -106,7 +123,7 @@ def recommendations():
             "alerts": alerts,
             "recommendations": recs.get("recommendations", []),
             "summary": recs.get("summary", ""),
-            "ai_source": recs.get("source", "rules"),
+            "ai_source": recs.get("ai_source") or recs.get("source", "rules"),
             "trend": trend,
             "product_name": product_name
         }), 200
