@@ -1,3 +1,5 @@
+import logging
+
 from flask import Blueprint, request, jsonify
 from middleware.auth_middleware import auth_required
 from models.user_store import ensure_user_row
@@ -5,6 +7,7 @@ from supabase import create_client
 from config import Config
 
 user_bp = Blueprint("user", __name__)
+logger = logging.getLogger(__name__)
 
 
 def get_client():
@@ -52,3 +55,41 @@ def get_user_predictions():
         return jsonify({"predictions": res.data, "count": len(res.data)}), 200
     except Exception as e:
         return jsonify({"error": "Historique introuvable", "detail": str(e)}), 500
+
+
+# ===== Secteur d'activite (memes cles que le dropdown du Dashboard) =====
+
+VALID_SECTORS = ["general", "restaurant", "epicerie", "boulangerie",
+                 "pepiniere", "boutique", "bureau_etude"]
+
+
+@user_bp.route("/sector", methods=["POST"])
+@auth_required
+def set_active_sector():
+    """POST /api/user/sector — Body: { "sector": "restaurant" }"""
+    body = request.get_json(silent=True) or {}
+    sector = str(body.get("sector", "")).strip().lower()
+    if sector not in VALID_SECTORS:
+        return jsonify({"error": f"Secteur invalide. Valeurs : {', '.join(VALID_SECTORS)}"}), 400
+    supabase = get_client()
+    try:
+        ensure_user_row(supabase, request.user_id, request.user_email)
+        supabase.table("users").update({"active_sector": sector})             .eq("id", request.user_id).execute()
+        return jsonify({"active_sector": sector}), 200
+    except Exception as e:
+        logger.error("set_active_sector: %s", e)
+        return jsonify({"error": "Secteur non enregistre", "detail": str(e)}), 500
+
+
+@user_bp.route("/sector", methods=["GET"])
+@auth_required
+def get_active_sector():
+    """GET /api/user/sector — secteur memorise (defaut : general)."""
+    supabase = get_client()
+    try:
+        res = supabase.table("users").select("active_sector")             .eq("id", request.user_id).limit(1).execute()
+        row = (res.data or [{}])[0]
+        return jsonify({"active_sector": row.get("active_sector") or "general"}), 200
+    except Exception as e:
+        logger.error("get_active_sector: %s", e)
+        return jsonify({"error": "Secteur introuvable", "detail": str(e)}), 500
