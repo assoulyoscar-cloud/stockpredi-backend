@@ -12,7 +12,7 @@ import requests as http
 import stripe
 from flask import Blueprint, request, jsonify
 from middleware.auth_middleware import auth_required
-from models.user_store import ensure_user_row
+from models.user_store import ensure_user_row, trial_status, TRIAL_WARNING_DAYS
 from config import Config
 from supabase import create_client
 from reportlab.lib.pagesizes import A4
@@ -164,14 +164,21 @@ def subscription_status():
     try:
         ensure_user_row(supabase, request.user_id, request.user_email)
         res = supabase.table("users") \
-            .select("plan, stripe_customer_id, stripe_subscription_id") \
+            .select("plan, stripe_customer_id, stripe_subscription_id, created_at") \
             .eq("id", request.user_id).single().execute()
-        
-        # FIX: Si plan est NULL/vide, défaut à "trial"
-        data = res.data or {}
-        if not data.get("plan"):
-            data["plan"] = "trial"
-        
+        row = res.data or {}
+
+        # plan NULL -> "trial" ; essai de 14 jours depasse -> "expired"
+        plan, days_left = trial_status(row)
+        data = {
+            "plan": plan,
+            "stripe_customer_id": row.get("stripe_customer_id"),
+            "stripe_subscription_id": row.get("stripe_subscription_id"),
+        }
+        if days_left is not None:
+            data["trial_days_left"] = days_left
+            # a partir du jour 11 (3 jours restants ou moins)
+            data["trial_warning"] = 0 < days_left <= TRIAL_WARNING_DAYS
         return jsonify(data), 200
     except Exception as e:
         print(f"routes/stripe_routes.py: Statut introuvable: {type(e).__name__}: {e}")

@@ -1,15 +1,34 @@
 from flask import Blueprint, request, jsonify
 import pandas as pd
 import numpy as np
+from supabase import create_client
+from config import Config
 from middleware.auth_middleware import auth_required
 from models.forecast import StockForecast, detect_alerts
 from models.recommendations import OllamaRecommender, compute_trend, compute_cv
+from models.user_store import trial_status
 
 predictions_bp = Blueprint("predictions", __name__)
 
 
 class DataError(ValueError):
     """Donnees envoyees invalides : message redige pour l'utilisateur."""
+
+
+TRIAL_EXPIRED = {"error": "Essai terminé — abonnez-vous pour continuer.", "code": "trial_expired"}
+
+
+def _trial_expired(user_id):
+    """True si l'essai gratuit est termine. Le Dashboard bloque aussi, mais la
+    regle est appliquee ici. Lecture impossible -> pas de blocage."""
+    try:
+        sb = create_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_KEY)
+        res = sb.table("users").select("plan, stripe_subscription_id, created_at") \
+            .eq("id", user_id).limit(1).execute()
+        return trial_status((res.data or [None])[0])[0] == "expired"
+    except Exception as e:
+        print(f"predictions: statut essai illisible: {type(e).__name__}: {e}")
+        return False
 
 
 def parse_data(raw: list) -> pd.DataFrame:
@@ -36,6 +55,9 @@ def forecast():
     """POST /api/predictions/forecast
     Body: { "data": [{"ds": "2024-01-01", "y": 42}, ...], "periods": 30 }
     """
+    if _trial_expired(request.user_id):
+        return jsonify(TRIAL_EXPIRED), 402
+
     body = request.get_json(silent=True) or {}
     raw = body.get("data", [])
     periods = int(body.get("periods", 30))
@@ -64,6 +86,9 @@ def recommendations():
     """POST /api/predictions/recommendations
     Body: { "data": [...], "product_name": "Widget A", "periods": 30 }
     """
+    if _trial_expired(request.user_id):
+        return jsonify(TRIAL_EXPIRED), 402
+
     try:
         body = request.get_json(silent=True) or {}
         raw = body.get("data", [])
