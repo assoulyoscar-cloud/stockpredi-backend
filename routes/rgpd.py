@@ -189,7 +189,7 @@ Vous pouvez télécharger le fichier PDF en pièce jointe.
 
 ---
 Conformément au RGPD Article 15, vous avez le droit d'accès à vos données personnelles.
-StockPredi | support@stockpredi.fr
+StockPredi | contact@stockpredi.fr
 """
 
         # Resend API call
@@ -200,7 +200,7 @@ StockPredi | support@stockpredi.fr
         }
 
         payload = {
-            "from": "noreply@stockpredi.fr",
+            "from": "contact@stockpredi.fr",
             "to": recipient_email,
             "subject": f"Votre export RGPD StockPredi - {export_id}",
             "html": email_body.replace("\n", "<br>"),
@@ -408,7 +408,7 @@ def delete_user_data():
                     "Content-Type": "application/json"
                 }
                 payload = {
-                    "from": "noreply@stockpredi.fr",
+                    "from": "contact@stockpredi.fr",
                     "to": user_email,
                     "subject": "Suppression de compte StockPredi confirmée",
                     "html": f"""Bonjour,<br><br>Votre compte StockPredi et toutes vos données ont été supprimées conformément à votre demande (RGPD Article 17).<br><br>
@@ -417,7 +417,7 @@ def delete_user_data():
                     - Email: {user_email}<br><br>
                     Cette suppression est irréversible.<br><br>
                     ---<br>
-                    StockPredi | support@stockpredi.fr"""
+                    StockPredi | contact@stockpredi.fr"""
                 }
                 requests.post(resend_url, json=payload, headers=headers, timeout=10)
             except:
@@ -478,7 +478,7 @@ def contact_dpo():
                 "Content-Type": "application/json"
             }
             payload = {
-                "from": "noreply@stockpredi.fr",
+                "from": "contact@stockpredi.fr",
                 "to": Config.OWNER_EMAIL,
                 "subject": f"[RGPD-{request_type.upper()}] {subject}",
                 "html": f"""<strong>Demande RGPD - {request_type.upper()}</strong><br><br>
@@ -499,7 +499,7 @@ def contact_dpo():
                 "Content-Type": "application/json"
             }
             payload = {
-                "from": "noreply@stockpredi.fr",
+                "from": "contact@stockpredi.fr",
                 "to": email,
                 "subject": f"Accusé de réception - Demande RGPD {request_type.upper()}",
                 "html": f"""Bonjour,<br><br>
