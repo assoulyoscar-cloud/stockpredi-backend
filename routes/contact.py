@@ -34,4 +34,5 @@ def submit_contact():
         
         return jsonify({"message": "Message envoye"}), 201
     except Exception as e:
-        return jsonify({"error": "Erreur soumission", "detail": str(e)}), 500
+        print(f"routes/contact.py: Erreur soumission: {type(e).__name__}: {e}")
+        return jsonify({"error": "Erreur soumission"}), 500

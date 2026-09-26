@@ -8,18 +8,25 @@ from models.recommendations import OllamaRecommender, compute_trend, compute_cv
 predictions_bp = Blueprint("predictions", __name__)
 
 
+class DataError(ValueError):
+    """Donnees envoyees invalides : message redige pour l'utilisateur."""
+
+
 def parse_data(raw: list) -> pd.DataFrame:
     """Valide et convertit les donnees entrantes en DataFrame Prophet."""
     if not raw or not isinstance(raw, list):
-        raise ValueError("data doit etre une liste non vide")
-    df = pd.DataFrame(raw)
+        raise DataError("data doit etre une liste non vide")
+    try:
+        df = pd.DataFrame(raw)
+    except Exception:
+        raise DataError("Format de donnees invalide : liste de {ds, y} attendue")
     if "ds" not in df.columns or "y" not in df.columns:
-        raise ValueError("Chaque enregistrement doit avoir 'ds' (date) et 'y' (quantite)")
+        raise DataError("Chaque enregistrement doit avoir 'ds' (date) et 'y' (quantite)")
     df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
     df["y"] = pd.to_numeric(df["y"], errors="coerce").fillna(0)
     df = df.dropna(subset=["ds"]).sort_values("ds")
     if len(df) < 7:
-        raise ValueError("Minimum 7 points de donnees requis pour une prevision fiable")
+        raise DataError("Minimum 7 points de donnees requis pour une prevision fiable")
     return df[["ds", "y"]]
 
 
@@ -36,8 +43,8 @@ def forecast():
 
     try:
         df = parse_data(raw)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    except DataError as e:
+        return jsonify({"error": str(e)}), 400  # message ecrit par nous, pas une exception brute
 
     try:
         forecaster = StockForecast(df)
@@ -47,7 +54,8 @@ def forecast():
         result["data_points"] = len(df)
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": "Erreur forecasting", "detail": str(e)}), 500
+        print(f"routes/predictions.py: Erreur forecasting: {type(e).__name__}: {e}")
+        return jsonify({"error": "Erreur forecasting"}), 500
 
 
 @predictions_bp.route("/recommendations", methods=["POST", "OPTIONS"])
@@ -69,8 +77,8 @@ def recommendations():
 
         try:
             df = parse_data(raw)
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
+        except DataError as e:
+            return jsonify({"error": str(e)}), 400  # message ecrit par nous, pas une exception brute
 
         # 1. Forecast
         forecaster = StockForecast(df)
@@ -132,7 +140,4 @@ def recommendations():
         # Trace dans les logs Render, pas dans la reponse envoyee au navigateur
         import traceback
         traceback.print_exc()
-        return jsonify({
-            "error": "Erreur recommandations",
-            "detail": str(e)
-        }), 500
+        return jsonify({"error": "Erreur recommandations"}), 500

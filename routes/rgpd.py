@@ -327,7 +327,8 @@ def export_user_data():
             {"error": str(e)},
             status="error"
         )
-        return jsonify({"error": "Export impossible", "detail": str(e)}), 500
+        print(f"routes/rgpd.py: Export impossible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Export impossible"}), 500
 
 @rgpd_bp.route("/status", methods=["GET", "OPTIONS"])
 @auth_required
@@ -365,7 +366,8 @@ def get_rgpd_status():
         }), 200
 
     except Exception as e:
-        return jsonify({"error": "Statut RGPD indisponible", "detail": str(e)}), 500
+        print(f"routes/rgpd.py: Statut RGPD indisponible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Statut RGPD indisponible"}), 500
 
 @rgpd_bp.route("/delete", methods=["DELETE", "OPTIONS"])
 @auth_required
@@ -442,7 +444,8 @@ def delete_user_data():
             {"error": str(e)},
             status="error"
         )
-        return jsonify({"error": "Suppression impossible", "detail": str(e)}), 500
+        print(f"routes/rgpd.py: Suppression impossible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Suppression impossible"}), 500
 
 @rgpd_bp.route("/contact", methods=["POST", "OPTIONS"])
 def contact_dpo():
@@ -525,4 +528,5 @@ def contact_dpo():
         }), 200
 
     except Exception as e:
-        return jsonify({"error": "Envoi impossible", "detail": str(e)}), 500
+        print(f"routes/rgpd.py: Envoi impossible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Envoi impossible"}), 500

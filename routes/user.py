@@ -24,7 +24,8 @@ def get_profile():
         res = supabase.table("users").select("*")             .eq("id", request.user_id).single().execute()
         return jsonify(res.data), 200
     except Exception as e:
-        return jsonify({"error": "Profil introuvable", "detail": str(e)}), 404
+        print(f"routes/user.py: Profil introuvable: {type(e).__name__}: {e}")
+        return jsonify({"error": "Profil introuvable"}), 404
 
 
 @user_bp.route("/profile", methods=["PATCH", "OPTIONS"])
@@ -41,7 +42,8 @@ def update_profile():
         res = supabase.table("users").update(updates)             .eq("id", request.user_id).execute()
         return jsonify(res.data[0] if res.data else {}), 200
     except Exception as e:
-        return jsonify({"error": "Mise a jour impossible", "detail": str(e)}), 500
+        print(f"routes/user.py: Mise a jour impossible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Mise a jour impossible"}), 500
 
 
 @user_bp.route("/predictions", methods=["GET"])
@@ -54,7 +56,8 @@ def get_user_predictions():
         res = supabase.table("predictions")             .select("*")             .eq("user_id", request.user_id)             .order("created_at", desc=True)             .limit(limit)             .execute()
         return jsonify({"predictions": res.data, "count": len(res.data)}), 200
     except Exception as e:
-        return jsonify({"error": "Historique introuvable", "detail": str(e)}), 500
+        print(f"routes/user.py: Historique introuvable: {type(e).__name__}: {e}")
+        return jsonify({"error": "Historique introuvable"}), 500
 
 
 # ===== Secteur d'activite (memes cles que le dropdown du Dashboard) =====
@@ -78,7 +81,8 @@ def set_active_sector():
         return jsonify({"active_sector": sector}), 200
     except Exception as e:
         logger.error("set_active_sector: %s", e)
-        return jsonify({"error": "Secteur non enregistre", "detail": str(e)}), 500
+        print(f"routes/user.py: Secteur non enregistre: {type(e).__name__}: {e}")
+        return jsonify({"error": "Secteur non enregistre"}), 500
 
 
 @user_bp.route("/sector", methods=["GET"])
@@ -92,4 +96,5 @@ def get_active_sector():
         return jsonify({"active_sector": row.get("active_sector") or "general"}), 200
     except Exception as e:
         logger.error("get_active_sector: %s", e)
-        return jsonify({"error": "Secteur introuvable", "detail": str(e)}), 500
+        print(f"routes/user.py: Secteur introuvable: {type(e).__name__}: {e}")
+        return jsonify({"error": "Secteur introuvable"}), 500

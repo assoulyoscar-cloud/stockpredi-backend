@@ -38,7 +38,8 @@ def signup():
             "user_id": res.user.id
         }), 201
     except Exception as e:
-        return jsonify({"error": "Inscription impossible", "detail": str(e)}), 400
+        print(f"routes/auth.py: Inscription impossible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Inscription impossible"}), 400
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -96,7 +97,8 @@ def refresh():
             "refresh_token": res.session.refresh_token
         }), 200
     except Exception as e:
-        return jsonify({"error": "Token invalide", "detail": str(e)}), 401
+        print(f"routes/auth.py: Token invalide: {type(e).__name__}: {e}")
+        return jsonify({"error": "Token invalide"}), 401
 
 
 @auth_bp.route("/forgot-password", methods=["POST"])
@@ -192,7 +194,7 @@ def reset_password():
             "message": "Mot de passe reinitialise avec succes"
         }), 200
     except Exception as e:
+        print(f"reset-password: {type(e).__name__}: {e}")
         return jsonify({
-            "error": "Impossible de reinitialiser le mot de passe",
-            "detail": str(e)
+            "error": "Impossible de reinitialiser le mot de passe"
         }), 400

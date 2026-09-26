@@ -106,6 +106,9 @@ def _resolve_recurring_price():
     new_price = stripe.Price.create(**create_kwargs)
     _RESOLVED_PRICE_ID = new_price["id"]
     return _RESOLVED_PRICE_ID
+PAYMENT_UNAVAILABLE = "Paiement temporairement indisponible. Réessayez dans quelques instants."
+
+
 @stripe_bp.route("/create-subscription", methods=["POST", "OPTIONS"])
 @auth_required
 def create_subscription():
@@ -132,10 +135,10 @@ def create_subscription():
             subscription_data={"trial_period_days": 14}
         )
         return jsonify({"checkout_url": session.url, "session_id": session.id}), 200
-    except stripe.StripeError as e:
-        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": "Erreur creation abonnement", "detail": str(e)}), 500
+        # Jamais le texte Stripe au client : il peut contenir la cle (sk_test_***...)
+        print(f"Stripe error (create-subscription): {type(e).__name__}: {e}")
+        return jsonify({"error": PAYMENT_UNAVAILABLE}), 500
 @stripe_bp.route("/cancel-subscription", methods=["POST", "OPTIONS"])
 @auth_required
 def cancel_subscription():
@@ -150,8 +153,9 @@ def cancel_subscription():
         supabase.table("users").update({"plan": "cancelling"}) \
             .eq("id", request.user_id).execute()
         return jsonify({"message": "Abonnement annule en fin de periode"}), 200
-    except stripe.StripeError as e:
-        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print(f"Stripe error (cancel-subscription): {type(e).__name__}: {e}")
+        return jsonify({"error": PAYMENT_UNAVAILABLE}), 500
 @stripe_bp.route("/status", methods=["GET"])
 @auth_required
 def subscription_status():
@@ -170,7 +174,8 @@ def subscription_status():
         
         return jsonify(data), 200
     except Exception as e:
-        return jsonify({"error": "Statut introuvable", "detail": str(e)}), 404
+        print(f"routes/stripe_routes.py: Statut introuvable: {type(e).__name__}: {e}")
+        return jsonify({"error": "Statut introuvable"}), 404
 def _build_urssaf_pdf(paid_dt, ca_mois, ca_annee, nb_mois, nb_annee,
                       invoice_num, client_email, amount):
     buf = BytesIO()

@@ -31,7 +31,8 @@ def auth_required(f):
             request.user_id = user.user.id
             request.user_email = user.user.email
         except Exception as e:
-            return jsonify({"error": "Token invalide", "detail": str(e)}), 401
+            print(f"middleware/auth_middleware.py: Token invalide: {type(e).__name__}: {e}")
+            return jsonify({"error": "Token invalide"}), 401
         return f(*args, **kwargs)
     return decorated
 
@@ -67,6 +68,7 @@ def admin_required(f):
             if not profile.data or profile.data.get("role") != "admin":
                 return jsonify({"error": "Acces admin requis"}), 403
         except Exception as e:
-            return jsonify({"error": "Non autorise", "detail": str(e)}), 403
+            print(f"middleware/auth_middleware.py: Non autorise: {type(e).__name__}: {e}")
+            return jsonify({"error": "Non autorise"}), 403
         return f(*args, **kwargs)
     return decorated

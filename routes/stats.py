@@ -48,4 +48,5 @@ def export_stats():
         }), 200
     
     except Exception as e:
-        return jsonify({"error": "Stats indisponibles", "detail": str(e)}), 500
+        print(f"routes/stats.py: Stats indisponibles: {type(e).__name__}: {e}")
+        return jsonify({"error": "Stats indisponibles"}), 500

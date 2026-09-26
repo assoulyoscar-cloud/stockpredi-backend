@@ -64,7 +64,8 @@ def export_clients():
             users = supabase.table("users").select("id, plan").in_("id", user_ids).execute().data or []
             plans = {u["id"]: u.get("plan") for u in users}
     except Exception as e:
-        return jsonify({"error": "Export clients impossible", "detail": str(e)}), 500
+        print(f"routes/admin.py: Export clients impossible: {type(e).__name__}: {e}")
+        return jsonify({"error": "Export clients impossible"}), 500
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
